@@ -1,10 +1,6 @@
-import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
-
-interface TranslationMap {
-	[key: string]: string[];
-}
+import { TranslationParser, TranslationMap } from "./i18n/parser";
 
 // Logger utility
 class Logger {
@@ -160,13 +156,6 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 				results: this.lastSearchResults,
 			});
 		}
-	}
-
-	private clearSearchState() {
-		this.lastSearchTerm = "";
-		this.lastSearchResults = [];
-		this.context.globalState.update("i18nSearch.lastSearchTerm", "");
-		this.context.globalState.update("i18nSearch.lastSearchResults", []);
 	}
 
 	resolveWebviewView(view: vscode.WebviewView) {
@@ -325,6 +314,7 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 				await new Promise((resolve) => setTimeout(resolve, searchTimeout));
 
 				// Navigate to the first result
+				await vscode.commands.executeCommand("search.action.focusSearchList");
 				await vscode.commands.executeCommand(
 					"search.action.focusNextSearchResult",
 				);
@@ -343,7 +333,7 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 	}
 
 	private getHtml(): string {
-		return `<!DOCTYPE html><html><head><style>body{font-family:var(--vscode-font-family);font-size:var(--vscode-font-size);color:var(--vscode-foreground);background-color:var(--vscode-sideBar-background);margin:0;padding:10px}#search{width:100%;padding:8px;border:1px solid var(--vscode-input-border);background-color:var(--vscode-input-background);color:var(--vscode-input-foreground);border-radius:4px;box-sizing:border-box;margin-bottom:10px}#search:focus{outline:1px solid var(--vscode-focusBorder);border-color:var(--vscode-focusBorder)}#results{list-style:none;padding:0;margin:0}.result-item{padding:8px;margin:4px 0;background-color:var(--vscode-list-hoverBackground);border-radius:4px;cursor:pointer;transition:background-color 0.2s;outline:none}.result-item:hover,.result-item:focus{background-color:var(--vscode-list-activeSelectionBackground);color:var(--vscode-list-activeSelectionForeground)}.result-item.selected{background-color:var(--vscode-list-activeSelectionBackground);color:var(--vscode-list-activeSelectionForeground);border:1px solid var(--vscode-focusBorder)}.result-key{font-weight:bold;color:var(--vscode-textPreformat-foreground)}.result-value{color:var(--vscode-descriptionForeground);font-size:0.9em;margin-top:2px}.no-results{color:var(--vscode-descriptionForeground);text-align:center;padding:20px;font-style:italic}.mixed-search-btn{background-color:var(--vscode-button-background);color:var(--vscode-button-foreground);border:1px solid var(--vscode-button-border);border-radius:4px;padding:6px 12px;margin:8px 0;cursor:pointer;font-size:0.9em;width:100%;text-align:center}.mixed-search-btn:hover{background-color:var(--vscode-button-hoverBackground)}.codebase-search-btn{background-color:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);border:1px solid var(--vscode-button-secondaryBorder);border-radius:4px;padding:6px 12px;margin:8px 0;cursor:pointer;font-size:0.9em;width:100%;text-align:center}.codebase-search-btn:hover{background-color:var(--vscode-button-secondaryHoverBackground)}</style></head><body><input id="search" type="text" placeholder="Search for translation text..." /><ul id="results"></ul><script>const vscode=acquireVsCodeApi();let searchTimeout,selectedIndex=-1,currentResults=[],currentSearchText="";document.getElementById('search').addEventListener('input',e=>{clearTimeout(searchTimeout);searchTimeout=setTimeout(()=>{vscode.postMessage({type:'search',text:e.target.value})},300)});document.addEventListener('keydown',e=>{const results=document.querySelectorAll('.result-item');if(results.length===0)return;switch(e.key){case'ArrowDown':e.preventDefault();selectedIndex=Math.min(selectedIndex+1,results.length-1);updateSelection();break;case'ArrowUp':e.preventDefault();selectedIndex=Math.max(selectedIndex-1,0);updateSelection();break;case'Enter':e.preventDefault();if(selectedIndex>=0&&selectedIndex<results.length){const selectedItem=results[selectedIndex];if(selectedItem.dataset.key){vscode.postMessage({type:'reveal',key:selectedItem.dataset.key,value:selectedItem.dataset.value})}}break}});function updateSelection(){const results=document.querySelectorAll('.result-item');results.forEach((item,index)=>{if(index===selectedIndex){item.classList.add('selected');item.focus()}else{item.classList.remove('selected')}})}function displayResults(results,searchText,enableMixedSearch){currentResults=results;currentSearchText=searchText;selectedIndex=-1;const ul=document.getElementById('results');if(results.length===0){let html='<div class="no-results">No translation keys found</div>';if(searchText){html+='<button class="codebase-search-btn" onclick="searchCodebase()">Search codebase instead</button>'}ul.innerHTML=html}else{let html=results.map((r,index)=>'<li class="result-item" data-key="'+r.key+'" data-value="'+r.value+'" tabindex="0"><div class="result-key">'+r.key+'</div><div class="result-value">'+r.value+'</div></li>').join('');if(enableMixedSearch&&searchText){html+='<li><button class="mixed-search-btn" onclick="searchCodebase()">Also search codebase for "'+searchText+'"</button></li>'}ul.innerHTML=html;ul.querySelectorAll('.result-item').forEach((item,index)=>{if(item.dataset.key){item.onclick=()=>{vscode.postMessage({type:'reveal',key:item.dataset.key,value:item.dataset.value})};item.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();vscode.postMessage({type:'reveal',key:item.dataset.key,value:item.dataset.value})}})}})}}function searchCodebase(){if(currentSearchText){vscode.postMessage({type:'searchCodebase',searchText:currentSearchText})}}window.addEventListener('message',event=>{const{type,results,searchTerm,searchText,enableMixedSearch}=event.data;if(type==='results'){displayResults(results,searchText,enableMixedSearch)}else if(type==='restoreSearch'){const searchInput=document.getElementById('search');if(searchInput&&searchTerm){searchInput.value=searchTerm;displayResults(results,searchTerm,true)}}else if(type==='focusSearch'){const searchInput=document.getElementById('search');if(searchInput){searchInput.focus();searchInput.select()}}else if(type==='webviewReady'){vscode.postMessage({type:'webviewReady'})}});document.addEventListener('DOMContentLoaded',()=>{vscode.postMessage({type:'webviewReady'})});</script></body></html>`;
+		return `<!DOCTYPE html><html><head><style>body{font-family:var(--vscode-font-family);font-size:var(--vscode-font-size);color:var(--vscode-foreground);background-color:var(--vscode-sideBar-background);margin:0;padding:10px}#search{width:100%;padding:8px;border:1px solid var(--vscode-input-border);background-color:var(--vscode-input-background);color:var(--vscode-input-foreground);border-radius:4px;box-sizing:border-box;margin-bottom:10px}#search:focus{outline:1px solid var(--vscode-focusBorder);border-color:var(--vscode-focusBorder)}#results{list-style:none;padding:0;margin:0}.result-item{padding:8px;margin:4px 0;background-color:var(--vscode-list-hoverBackground);border-radius:4px;cursor:pointer;transition:background-color 0.2s;outline:none}.result-item:hover,.result-item:focus{background-color:var(--vscode-list-activeSelectionBackground);color:var(--vscode-list-activeSelectionForeground)}.result-item.selected{background-color:var(--vscode-list-activeSelectionBackground);color:var(--vscode-list-activeSelectionForeground);border:1px solid var(--vscode-focusBorder)}.result-key{font-weight:bold;color:var(--vscode-textPreformat-foreground)}.result-value{color:var(--vscode-descriptionForeground);font-size:0.9em;margin-top:2px}.no-results{color:var(--vscode-descriptionForeground);text-align:center;padding:20px;font-style:italic}.mixed-search-btn{background-color:var(--vscode-button-background);color:var(--vscode-button-foreground);border:1px solid var(--vscode-button-border);border-radius:4px;padding:6px 12px;margin:8px 0;cursor:pointer;font-size:0.9em;width:100%;text-align:center}.mixed-search-btn:hover{background-color:var(--vscode-button-hoverBackground)}.codebase-search-btn{background-color:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);border:1px solid var(--vscode-button-secondaryBorder);border-radius:4px;padding:6px 12px;margin:8px 0;cursor:pointer;font-size:0.9em;width:100%;text-align:center}.codebase-search-btn:hover{background-color:var(--vscode-button-secondaryHoverBackground)}</style></head><body><input id="search" type="text" placeholder="Search for translation text..." /><ul id="results"></ul><script>const vscode=acquireVsCodeApi();let searchTimeout,selectedIndex=-1,currentResults=[],currentSearchText="";document.getElementById('search').addEventListener('input',e=>{clearTimeout(searchTimeout);searchTimeout=setTimeout(()=>{vscode.postMessage({type:'search',text:e.target.value})},300)});document.addEventListener('keydown',e=>{const results=document.querySelectorAll('.result-item');if(results.length===0)return;switch(e.key){case'ArrowDown':e.preventDefault();selectedIndex=Math.min(selectedIndex+1,results.length-1);updateSelection();break;case'ArrowUp':e.preventDefault();selectedIndex=Math.max(selectedIndex-1,0);updateSelection();break;case'Enter':e.preventDefault();if(selectedIndex>=0&&selectedIndex<results.length){const selectedItem=results[selectedIndex];if(selectedItem.dataset.key){vscode.postMessage({type:'reveal',key:selectedItem.dataset.key,value:selectedItem.dataset.value})}}break}});function updateSelection(){const results=document.querySelectorAll('.result-item');results.forEach((item,index)=>{if(index===selectedIndex){item.classList.add('selected');item.focus()}else{item.classList.remove('selected')}})}function displayResults(results,searchText,enableMixedSearch){currentResults=results;currentSearchText=searchText;selectedIndex=-1;const ul=document.getElementById('results');if(results.length===0){let html='<div class="no-results">No translation keys found</div>';if(searchText){html+='<button class="codebase-search-btn" onclick="searchCodebase()">Search codebase instead</button>'}ul.innerHTML=html}else{let html=results.map((r,index)=>'<li class="result-item" data-key="'+r.key+'" data-value="'+r.value+'" tabindex="0"><div class="result-key">'+r.key+'</div><div class="result-value">'+r.value+'</div></li>').join('');if(enableMixedSearch&&searchText){html+='<li><button class="mixed-search-btn" onclick="searchCodebase()">Search codebase for "'+searchText+'"</button></li>'}ul.innerHTML=html;ul.querySelectorAll('.result-item').forEach((item,index)=>{if(item.dataset.key){item.onclick=()=>{vscode.postMessage({type:'reveal',key:item.dataset.key,value:item.dataset.value})};item.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();vscode.postMessage({type:'reveal',key:item.dataset.key,value:item.dataset.value})}})}})}}function searchCodebase(){if(currentSearchText){vscode.postMessage({type:'searchCodebase',searchText:currentSearchText})}}window.addEventListener('message',event=>{const{type,results,searchTerm,searchText,enableMixedSearch}=event.data;if(type==='results'){displayResults(results,searchText,enableMixedSearch)}else if(type==='restoreSearch'){const searchInput=document.getElementById('search');if(searchInput&&searchTerm){searchInput.value=searchTerm;displayResults(results,searchTerm,true)}}else if(type==='focusSearch'){const searchInput=document.getElementById('search');if(searchInput){searchInput.focus();searchInput.select()}}else if(type==='webviewReady'){vscode.postMessage({type:'webviewReady'})}});document.addEventListener('DOMContentLoaded',()=>{vscode.postMessage({type:'webviewReady'})});</script></body></html>`;
 	}
 }
 
@@ -353,10 +343,17 @@ class I18nFileSystemProvider implements vscode.FileSystemProvider {
 	>();
 	readonly onDidChangeFile = this._onDidChangeFile.event;
 
-	constructor(private translationMap: TranslationMap) {}
+	constructor(
+		private translationMap: TranslationMap,
+		private keyToValue: Record<string, string> = {},
+	) {}
 
-	updateTranslations(newMap: TranslationMap) {
+	updateTranslations(
+		newMap: TranslationMap,
+		newKeyToValue: Record<string, string> = {},
+	) {
 		this.translationMap = newMap;
+		this.keyToValue = newKeyToValue;
 	}
 
 	watch(): vscode.Disposable {
@@ -365,7 +362,7 @@ class I18nFileSystemProvider implements vscode.FileSystemProvider {
 
 	stat(uri: vscode.Uri): vscode.FileStat {
 		const key = this.getKeyFromUri(uri);
-		if (key && this.translationMap[key]) {
+		if (key && this.keyToValue[key]) {
 			return {
 				type: vscode.FileType.File,
 				ctime: Date.now(),
@@ -386,8 +383,8 @@ class I18nFileSystemProvider implements vscode.FileSystemProvider {
 
 	readFile(uri: vscode.Uri): Uint8Array {
 		const key = this.getKeyFromUri(uri);
-		if (key && this.translationMap[key]) {
-			const content = `export const t = "${this.translationMap[key][0]}";`;
+		if (key && this.keyToValue[key]) {
+			const content = `export const t = "${this.keyToValue[key]}";`;
 			return Buffer.from(content, "utf8");
 		}
 		throw vscode.FileSystemError.FileNotFound();
@@ -417,81 +414,6 @@ class I18nFileSystemProvider implements vscode.FileSystemProvider {
 	}
 }
 
-async function loadTranslations(filePath: string): Promise<TranslationMap> {
-	try {
-		const workspaceFolders = vscode.workspace.workspaceFolders;
-		if (!workspaceFolders || workspaceFolders.length === 0) {
-			throw new Error("No workspace folder found");
-		}
-
-		const absPath = path.resolve(workspaceFolders[0].uri.fsPath, filePath);
-
-		if (!fs.existsSync(absPath)) {
-			throw new Error(`Translation file not found: ${absPath}`);
-		}
-
-		// Read the translation file
-		const fileContent = fs.readFileSync(absPath, "utf-8");
-
-		// Extract the object from the export default statement
-		const match = fileContent.match(/export\s+default\s+(\{[\s\S]*\})/);
-		if (!match) {
-			throw new Error("Translation file must export a default object");
-		}
-
-		// Parse the object safely by converting to valid JSON
-		const objectString = match[1];
-		const jsonString = objectString
-			.replace(/(\w+):/g, '"$1":') // Quote property names
-			.replace(/'/g, '"') // Replace single quotes with double quotes
-			.replace(/,(\s*[}\]])/g, "$1") // Remove trailing commas before } or ]
-			.replace(/,\s*}/g, "}") // Remove trailing commas before closing braces
-			.replace(/,\s*]/g, "]"); // Remove trailing commas before closing brackets
-
-		let translationObj: any;
-		try {
-			translationObj = JSON.parse(jsonString);
-		} catch (parseError) {
-			getLogger().error("JSON parse error:", parseError);
-			getLogger().error("Attempted to parse:", jsonString);
-			// Fallback: try to use Function constructor (safer than eval)
-			try {
-				translationObj = Function(`return ${objectString}`)();
-			} catch (fallbackError) {
-				getLogger().error("Fallback parse also failed:", fallbackError);
-				throw new Error("Failed to parse translation object");
-			}
-		}
-
-		if (!translationObj || typeof translationObj !== "object") {
-			throw new Error("Translation file must export a default object");
-		}
-
-		const map: TranslationMap = {};
-
-		function flatten(obj: any, prefix = "") {
-			if (typeof obj === "string") {
-				if (!map[obj]) {
-					map[obj] = [];
-				}
-				map[obj].push(prefix);
-			} else if (typeof obj === "object" && obj !== null) {
-				for (const key in obj) {
-					flatten(obj[key], prefix ? `${prefix}.${key}` : key);
-				}
-			}
-		}
-
-		flatten(translationObj);
-		getLogger().debug("Translation map loaded:", map);
-		getLogger().debug("Translation values:", Object.keys(map));
-		return map;
-	} catch (error) {
-		getLogger().error("Failed to load translations:", error);
-		return {};
-	}
-}
-
 export function activate(context: vscode.ExtensionContext) {
 	logger = new Logger();
 
@@ -503,6 +425,7 @@ export function activate(context: vscode.ExtensionContext) {
 	logger.info("i18n-search extension is now active!");
 
 	let translationMap: TranslationMap = {};
+	let keyToValue: Record<string, string> = {};
 	let fileSystemProvider: I18nFileSystemProvider;
 	const searchViewProvider: I18nSearchViewProvider = new I18nSearchViewProvider(
 		context,
@@ -546,10 +469,38 @@ export function activate(context: vscode.ExtensionContext) {
 		const catalogPath = config.get<string>("catalogPath", "./src/i18n/en.ts");
 
 		try {
-			translationMap = await loadTranslations(catalogPath);
+			// Use the new robust parser
+			const parser = new TranslationParser(getLogger().debug.bind(getLogger()));
+			const parsed = await parser.parseTranslationFile(catalogPath);
+
+			translationMap = parsed.valueToKeys;
+			keyToValue = parsed.keyToValue;
+
+			// Log any parsing errors
+			if (parsed.errors.length > 0) {
+				getLogger().warn("Translation file parsing errors:", parsed.errors);
+			}
+
+			// Validate the parsed file
+			const validation = parser.validateTranslationFile(parsed);
+			if (validation.warnings.length > 0) {
+				getLogger().warn(
+					"Translation file validation warnings:",
+					validation.warnings,
+				);
+			}
+			if (validation.errors.length > 0) {
+				getLogger().error(
+					"Translation file validation errors:",
+					validation.errors,
+				);
+			}
 
 			// Register file system provider
-			fileSystemProvider = new I18nFileSystemProvider(translationMap);
+			fileSystemProvider = new I18nFileSystemProvider(
+				translationMap,
+				keyToValue,
+			);
 			context.subscriptions.push(
 				vscode.workspace.registerFileSystemProvider(
 					scheme,
@@ -559,7 +510,7 @@ export function activate(context: vscode.ExtensionContext) {
 			);
 
 			getLogger().info(
-				`Loaded ${Object.keys(translationMap).length} translation values`,
+				`Loaded ${Object.keys(translationMap).length} translation values and ${Object.keys(keyToValue).length} translation keys`,
 			);
 		} catch (error) {
 			getLogger().error("Failed to initialize i18n-search:", error);
@@ -585,10 +536,36 @@ export function activate(context: vscode.ExtensionContext) {
 
 		watcher.onDidChange(async () => {
 			getLogger().info("Translation file changed, reloading...");
-			translationMap = await loadTranslations(catalogPath);
+
+			// Use the new robust parser
+			const parser = new TranslationParser(getLogger().debug.bind(getLogger()));
+			const parsed = await parser.parseTranslationFile(catalogPath);
+
+			translationMap = parsed.valueToKeys;
+			keyToValue = parsed.keyToValue;
+
+			// Log any parsing errors
+			if (parsed.errors.length > 0) {
+				getLogger().warn("Translation file parsing errors:", parsed.errors);
+			}
+
+			// Validate the parsed file
+			const validation = parser.validateTranslationFile(parsed);
+			if (validation.warnings.length > 0) {
+				getLogger().warn(
+					"Translation file validation warnings:",
+					validation.warnings,
+				);
+			}
+			if (validation.errors.length > 0) {
+				getLogger().error(
+					"Translation file validation errors:",
+					validation.errors,
+				);
+			}
 
 			if (fileSystemProvider) {
-				fileSystemProvider.updateTranslations(translationMap);
+				fileSystemProvider.updateTranslations(translationMap, keyToValue);
 			}
 
 			if (searchViewProvider) {
@@ -670,11 +647,11 @@ export function activate(context: vscode.ExtensionContext) {
 					}
 				}
 
-				const matchingKeys = Object.entries(translationMap)
-					.filter(([translationValue]) =>
+				const matchingKeys = Object.entries(keyToValue)
+					.filter(([, translationValue]) =>
 						translationValue.toLowerCase().includes(value!.toLowerCase()),
 					)
-					.flatMap(([, keys]) => keys);
+					.map(([key]) => key);
 
 				if (matchingKeys.length > 0) {
 					const key = matchingKeys[0];
