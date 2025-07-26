@@ -10,6 +10,8 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 	public static readonly viewType = "i18nSearchView";
 	private _view?: vscode.WebviewView;
 	private translationMap: TranslationMap = {};
+	private webviewReady = false;
+	private pendingFocus = false;
 
 	constructor(private context: vscode.ExtensionContext) {
 		console.log("I18nSearchViewProvider constructor called");
@@ -21,8 +23,12 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 	}
 
 	focusSearch() {
-		if (this._view) {
+		if (this._view && this.webviewReady) {
 			this._view.webview.postMessage({ type: "focusSearch" });
+			this.pendingFocus = false;
+		} else {
+			// Mark that we want to focus when ready
+			this.pendingFocus = true;
 		}
 	}
 
@@ -56,6 +62,14 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 				view.webview.postMessage({ type: "results", results: matches });
 			} else if (msg.type === "reveal") {
 				this.revealKeyUsage(msg.key);
+			} else if (msg.type === "webviewReady") {
+				this.webviewReady = true;
+				console.log("Webview is ready for interaction");
+
+				// Process any pending focus requests
+				if (this.pendingFocus) {
+					this.focusSearch();
+				}
 			}
 		});
 
@@ -105,176 +119,7 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 	}
 
 	private getHtml(): string {
-		return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <style>
-          body {
-            font-family: var(--vscode-font-family);
-            font-size: var(--vscode-font-size);
-            color: var(--vscode-foreground);
-            background-color: var(--vscode-sideBar-background);
-            margin: 0;
-            padding: 10px;
-          }
-          
-          #search {
-            width: 100%;
-            padding: 8px;
-            border: 1px solid var(--vscode-input-border);
-            background-color: var(--vscode-input-background);
-            color: var(--vscode-input-foreground);
-            border-radius: 4px;
-            box-sizing: border-box;
-            margin-bottom: 10px;
-          }
-          
-          #search:focus {
-            outline: 1px solid var(--vscode-focusBorder);
-            border-color: var(--vscode-focusBorder);
-          }
-          
-          #results {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-          }
-          
-          .result-item {
-            padding: 8px;
-            margin: 4px 0;
-            background-color: var(--vscode-list-hoverBackground);
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background-color 0.2s;
-            outline: none;
-          }
-          
-          .result-item:hover,
-          .result-item:focus {
-            background-color: var(--vscode-list-activeSelectionBackground);
-            color: var(--vscode-list-activeSelectionForeground);
-          }
-          
-          .result-item.selected {
-            background-color: var(--vscode-list-activeSelectionBackground);
-            color: var(--vscode-list-activeSelectionForeground);
-            border: 1px solid var(--vscode-focusBorder);
-          }
-          
-          .result-key {
-            font-weight: bold;
-            color: var(--vscode-textPreformat-foreground);
-          }
-          
-          .result-value {
-            color: var(--vscode-descriptionForeground);
-            font-size: 0.9em;
-            margin-top: 2px;
-          }
-          
-          .no-results {
-            color: var(--vscode-descriptionForeground);
-            text-align: center;
-            padding: 20px;
-            font-style: italic;
-          }
-        </style>
-      </head>
-      <body>
-        <input id="search" type="text" placeholder="Search for translation text..." />
-        <ul id="results"></ul>
-        
-        <script>
-          const vscode = acquireVsCodeApi();
-          let searchTimeout;
-          let selectedIndex = -1;
-          let currentResults = [];
-          
-          document.getElementById('search').addEventListener('input', e => {
-            clearTimeout(searchTimeout);
-            searchTimeout = setTimeout(() => {
-              vscode.postMessage({ type: 'search', text: e.target.value });
-            }, 300);
-          });
-
-          // Handle keyboard navigation
-          document.addEventListener('keydown', e => {
-            const results = document.querySelectorAll('.result-item');
-            if (results.length === 0) return;
-            
-            switch (e.key) {
-              case 'ArrowDown':
-                e.preventDefault();
-                selectedIndex = Math.min(selectedIndex + 1, results.length - 1);
-                updateSelection();
-                break;
-              case 'ArrowUp':
-                e.preventDefault();
-                selectedIndex = Math.max(selectedIndex - 1, 0);
-                updateSelection();
-                break;
-              case 'Enter':
-                e.preventDefault();
-                if (selectedIndex >= 0 && selectedIndex < results.length) {
-                  const selectedItem = results[selectedIndex];
-                  vscode.postMessage({ type: 'reveal', key: selectedItem.dataset.key });
-                }
-                break;
-            }
-          });
-
-          function updateSelection() {
-            const results = document.querySelectorAll('.result-item');
-            results.forEach((item, index) => {
-              if (index === selectedIndex) {
-                item.classList.add('selected');
-                item.focus();
-              } else {
-                item.classList.remove('selected');
-              }
-            });
-          }
-
-          window.addEventListener('message', event => {
-            const { type, results } = event.data;
-            if (type === 'results') {
-              currentResults = results;
-              selectedIndex = -1;
-              const ul = document.getElementById('results');
-              if (results.length === 0) {
-                ul.innerHTML = '<div class="no-results">No translation keys found</div>';
-              } else {
-                ul.innerHTML = results.map((r, index) =>
-                  \`<li class="result-item" data-key="\${r.key}" tabindex="0">
-                    <div class="result-key">\${r.key}</div>
-                    <div class="result-value">\${r.value}</div>
-                  </li>\`
-                ).join('');
-                
-                ul.querySelectorAll('.result-item').forEach((item, index) => {
-                  item.onclick = () => {
-                    vscode.postMessage({ type: 'reveal', key: item.dataset.key });
-                  };
-                  
-                  // Handle Enter key on individual items
-                  item.addEventListener('keydown', e => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      vscode.postMessage({ type: 'reveal', key: item.dataset.key });
-                    }
-                  });
-                });
-              }
-            } else if (type === 'focusSearch') {
-              document.getElementById('search').focus();
-            }
-          });
-        </script>
-      </body>
-      </html>
-    `;
+		return `<!DOCTYPE html><html><head><style>body{font-family:var(--vscode-font-family);font-size:var(--vscode-font-size);color:var(--vscode-foreground);background-color:var(--vscode-sideBar-background);margin:0;padding:10px}#search{width:100%;padding:8px;border:1px solid var(--vscode-input-border);background-color:var(--vscode-input-background);color:var(--vscode-input-foreground);border-radius:4px;box-sizing:border-box;margin-bottom:10px}#search:focus{outline:1px solid var(--vscode-focusBorder);border-color:var(--vscode-focusBorder)}#results{list-style:none;padding:0;margin:0}.result-item{padding:8px;margin:4px 0;background-color:var(--vscode-list-hoverBackground);border-radius:4px;cursor:pointer;transition:background-color 0.2s;outline:none}.result-item:hover,.result-item:focus{background-color:var(--vscode-list-activeSelectionBackground);color:var(--vscode-list-activeSelectionForeground)}.result-item.selected{background-color:var(--vscode-list-activeSelectionBackground);color:var(--vscode-list-activeSelectionForeground);border:1px solid var(--vscode-focusBorder)}.result-key{font-weight:bold;color:var(--vscode-textPreformat-foreground)}.result-value{color:var(--vscode-descriptionForeground);font-size:0.9em;margin-top:2px}.no-results{color:var(--vscode-descriptionForeground);text-align:center;padding:20px;font-style:italic}</style></head><body><input id="search" type="text" placeholder="Search for translation text..." /><ul id="results"></ul><script>const vscode=acquireVsCodeApi();let searchTimeout,selectedIndex=-1,currentResults=[];document.getElementById('search').addEventListener('input',e=>{clearTimeout(searchTimeout);searchTimeout=setTimeout(()=>{vscode.postMessage({type:'search',text:e.target.value})},300)});document.addEventListener('keydown',e=>{const results=document.querySelectorAll('.result-item');if(results.length===0)return;switch(e.key){case'ArrowDown':e.preventDefault();selectedIndex=Math.min(selectedIndex+1,results.length-1);updateSelection();break;case'ArrowUp':e.preventDefault();selectedIndex=Math.max(selectedIndex-1,0);updateSelection();break;case'Enter':e.preventDefault();if(selectedIndex>=0&&selectedIndex<results.length){const selectedItem=results[selectedIndex];vscode.postMessage({type:'reveal',key:selectedItem.dataset.key})}break}});function updateSelection(){const results=document.querySelectorAll('.result-item');results.forEach((item,index)=>{if(index===selectedIndex){item.classList.add('selected');item.focus()}else{item.classList.remove('selected')}})}window.addEventListener('message',event=>{const{type,results}=event.data;if(type==='results'){currentResults=results;selectedIndex=-1;const ul=document.getElementById('results');if(results.length===0){ul.innerHTML='<div class="no-results">No translation keys found</div>'}else{ul.innerHTML=results.map((r,index)=>'<li class="result-item" data-key="'+r.key+'" tabindex="0"><div class="result-key">'+r.key+'</div><div class="result-value">'+r.value+'</div></li>').join('');ul.querySelectorAll('.result-item').forEach((item,index)=>{item.onclick=()=>{vscode.postMessage({type:'reveal',key:item.dataset.key})};item.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();vscode.postMessage({type:'reveal',key:item.dataset.key})}})});}}else if(type==='focusSearch'){const searchInput=document.getElementById('search');if(searchInput){searchInput.focus();searchInput.select()}}else if(type==='webviewReady'){vscode.postMessage({type:'webviewReady'})}});document.addEventListener('DOMContentLoaded',()=>{vscode.postMessage({type:'webviewReady'})});</script></body></html>`;
 	}
 }
 
@@ -650,7 +495,7 @@ export function activate(context: vscode.ExtensionContext) {
 			vscode.commands
 				.executeCommand("workbench.view.extension.i18nSearch")
 				.then(() => {
-					// Send message to focus the search input
+					// Use the provider's focus method which handles ready state
 					searchViewProvider.focusSearch();
 				});
 		}),
