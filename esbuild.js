@@ -1,4 +1,6 @@
 const esbuild = require("esbuild");
+const fs = require("fs");
+const path = require("path");
 
 const production = process.argv.includes("--production");
 const watch = process.argv.includes("--watch");
@@ -25,6 +27,37 @@ const esbuildProblemMatcherPlugin = {
 	},
 };
 
+/**
+ * @type {import('esbuild').Plugin}
+ */
+const copyHtmlPlugin = {
+	name: "copy-html",
+
+	setup(build) {
+		build.onEnd(async (result) => {
+			if (result.errors.length === 0) {
+				try {
+					// Ensure dist directory exists
+					if (!fs.existsSync("dist")) {
+						fs.mkdirSync("dist", { recursive: true });
+					}
+
+					// Copy HTML file
+					const sourcePath = path.join(__dirname, "src", "webview.html");
+					const destPath = path.join(__dirname, "dist", "webview.html");
+
+					if (fs.existsSync(sourcePath)) {
+						fs.copyFileSync(sourcePath, destPath);
+						console.log("[build] Copied webview.html to dist/");
+					}
+				} catch (error) {
+					console.error("[build] Failed to copy HTML file:", error);
+				}
+			}
+		});
+	},
+};
+
 async function main() {
 	const ctx = await esbuild.context({
 		entryPoints: ["src/extension.ts"],
@@ -40,6 +73,7 @@ async function main() {
 		plugins: [
 			/* add to the end of plugins array */
 			esbuildProblemMatcherPlugin,
+			copyHtmlPlugin,
 		],
 	});
 	if (watch) {

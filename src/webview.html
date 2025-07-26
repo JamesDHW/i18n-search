@@ -74,7 +74,7 @@
             font-style: italic;
         }
         
-        .mixed-search-btn {
+        .btn {
             background-color: var(--vscode-button-background);
             color: var(--vscode-button-foreground);
             border: 1px solid var(--vscode-button-border);
@@ -87,49 +87,15 @@
             text-align: center;
         }
         
-        .mixed-search-btn:hover {
+        .btn:hover {
             background-color: var(--vscode-button-hoverBackground);
-        }
-        
-        .codebase-search-btn {
-            background-color: var(--vscode-button-secondaryBackground);
-            color: var(--vscode-button-secondaryForeground);
-            border: 1px solid var(--vscode-button-secondaryBorder);
-            border-radius: 4px;
-            padding: 6px 12px;
-            margin: 8px 0;
-            cursor: pointer;
-            font-size: 0.9em;
-            width: 100%;
-            text-align: center;
-        }
-        
-        .codebase-search-btn:hover {
-            background-color: var(--vscode-button-secondaryHoverBackground);
-        }
-        
-        .default-search-btn {
-            background-color: var(--vscode-button-secondaryBackground);
-            color: var(--vscode-button-secondaryForeground);
-            border: 1px solid var(--vscode-button-secondaryBorder);
-            border-radius: 4px;
-            padding: 6px 12px;
-            margin: 8px 0;
-            cursor: pointer;
-            font-size: 0.9em;
-            width: 100%;
-            text-align: center;
-        }
-        
-        .default-search-btn:hover {
-            background-color: var(--vscode-button-secondaryHoverBackground);
         }
     </style>
 </head>
 <body>
     <input id="search" type="text" placeholder="Search for translation text..." />
     <ul id="results"></ul>
-    <button id="defaultSearchBtn" class="default-search-btn" onclick="searchCodebase()">Search codebase</button>
+    <button id="defaultSearchBtn" class="btn" onclick="searchCodebase()" tabindex="0">Search codebase</button>
     
     <script>
         const vscode = acquireVsCodeApi();
@@ -142,20 +108,61 @@
             }, 300);
         });
         
+
+        
         document.addEventListener('keydown', e => {
             const results = document.querySelectorAll('.result-item');
-            if (results.length === 0) return;
+            const searchInput = document.getElementById('search');
+            const searchBtn = document.querySelector('.btn');
             
             switch (e.key) {
                 case 'ArrowDown':
                     e.preventDefault();
-                    selectedIndex = Math.min(selectedIndex + 1, results.length - 1);
-                    updateSelection();
+                    if (document.activeElement === searchInput) {
+                        // From search input to first result or search button
+                        if (results.length > 0) {
+                            selectedIndex = 0;
+                            updateSelection();
+                        } else if (searchBtn) {
+                            searchBtn.focus();
+                        }
+                    } else if (selectedIndex >= 0 && selectedIndex < results.length) {
+                        // Navigate through results
+                        if (selectedIndex === results.length - 1) {
+                            // At last result, go to search button
+                            if (searchBtn) {
+                                searchBtn.focus();
+                                selectedIndex = -1;
+                                updateSelection();
+                            }
+                        } else {
+                            selectedIndex = Math.min(selectedIndex + 1, results.length - 1);
+                            updateSelection();
+                        }
+                    }
                     break;
                 case 'ArrowUp':
                     e.preventDefault();
-                    selectedIndex = Math.max(selectedIndex - 1, 0);
-                    updateSelection();
+                    if (document.activeElement === searchBtn) {
+                        // From search button to last result or search input
+                        if (results.length > 0) {
+                            selectedIndex = results.length - 1;
+                            updateSelection();
+                        } else {
+                            searchInput.focus();
+                        }
+                    } else if (selectedIndex >= 0 && selectedIndex < results.length) {
+                        // Navigate through results
+                        if (selectedIndex === 0) {
+                            // At first result, go to search input
+                            searchInput.focus();
+                            selectedIndex = -1;
+                            updateSelection();
+                        } else {
+                            selectedIndex = Math.max(selectedIndex - 1, 0);
+                            updateSelection();
+                        }
+                    }
                     break;
                 case 'Enter':
                     e.preventDefault();
@@ -168,6 +175,8 @@
                                 value: selectedItem.dataset.value 
                             });
                         }
+                    } else if (document.activeElement === searchBtn) {
+                        searchCodebase();
                     }
                     break;
             }
@@ -194,9 +203,7 @@
             
             if (results.length === 0) {
                 let html = '<div class="no-results">No translation keys found</div>';
-                if (searchText) {
-                    html += '<button class="codebase-search-btn" onclick="searchCodebase()">Search codebase instead</button>';
-                }
+                html += '<button class="btn" onclick="searchCodebase()" tabindex="0">Search codebase</button>';
                 ul.innerHTML = html;
                 defaultBtn.style.display = 'none';
             } else {
@@ -207,9 +214,7 @@
                     '</li>'
                 ).join('');
                 
-                if (enableMixedSearch && searchText) {
-                    html += '<li><button class="mixed-search-btn" onclick="searchCodebase()">Search codebase for "' + searchText + '"</button></li>';
-                }
+                html += '<li><button class="btn" onclick="searchCodebase()" tabindex="0">Search codebase' + (searchText ? ' for "' + searchText + '"' : '') + '</button></li>';
                 
                 ul.innerHTML = html;
                 defaultBtn.style.display = 'none';
@@ -262,6 +267,9 @@
                 if (searchInput && searchTerm) {
                     searchInput.value = searchTerm;
                     displayResults(results, searchTerm, true);
+                } else if (searchInput && !searchTerm) {
+                    // If no search term to restore, trigger search with empty string to show all results
+                    vscode.postMessage({ type: 'search', text: '' });
                 }
             } else if (type === 'focusSearch') {
                 const searchInput = document.getElementById('search');

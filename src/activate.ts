@@ -762,7 +762,9 @@ export function activate(context: vscode.ExtensionContext) {
 						prompt: "Enter text to search in codebase",
 						placeHolder: "e.g., Hello World",
 					});
-					if (!searchTerm) return;
+					if (!searchTerm) {
+						return;
+					}
 				}
 
 				await vscode.commands.executeCommand("workbench.action.findInFiles", {
