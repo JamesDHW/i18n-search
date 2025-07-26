@@ -60,6 +60,16 @@
           "type": "string",
           "default": "./src/i18n/en.ts",
           "description": "Path to the default-exported translation file"
+        },
+        "i18nSearch.enableMixedSearch": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable mixed search to search both translations and codebase simultaneously"
+        },
+        "i18nSearch.showCodebaseSearchOption": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show 'Search codebase instead' option when no translation results are found"
         }
       }
     },
@@ -101,6 +111,11 @@
       {
         "command": "i18n-search.focusSearch",
         "title": "i18n-search: Focus Search Input",
+        "category": "i18n-search"
+      },
+      {
+        "command": "i18n-search.searchCodebase",
+        "title": "i18n-search: Search Codebase",
         "category": "i18n-search"
       }
     ],

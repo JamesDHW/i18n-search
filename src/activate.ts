@@ -98,12 +98,32 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 			if (msg.type === "search") {
 				const matches = this.findTranslations(msg.text);
 				console.log("Search results:", matches);
-				view.webview.postMessage({ type: "results", results: matches });
+
+				// Get configuration
+				const config = vscode.workspace.getConfiguration("i18nSearch");
+				const enableMixedSearch = config.get<boolean>(
+					"enableMixedSearch",
+					true,
+				);
+				const showCodebaseSearchOption = config.get<boolean>(
+					"showCodebaseSearchOption",
+					true,
+				);
+
+				view.webview.postMessage({
+					type: "results",
+					results: matches,
+					searchText: msg.text,
+					enableMixedSearch,
+					showCodebaseSearchOption,
+				});
 
 				// Save search state (including empty searches)
 				this.saveSearchState(msg.text, matches);
 			} else if (msg.type === "reveal") {
-				this.revealKeyUsage(msg.key);
+				this.revealKeyUsage(msg.key, msg.value);
+			} else if (msg.type === "searchCodebase") {
+				this.searchCodebase(msg.searchText);
 			} else if (msg.type === "webviewReady") {
 				this.webviewReady = true;
 				console.log("Webview is ready for interaction");
@@ -144,14 +164,44 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 		return results;
 	}
 
-	private async revealKeyUsage(key: string) {
+	private async searchCodebase(searchText: string) {
+		await vscode.commands.executeCommand(
+			"i18n-search.searchCodebase",
+			searchText,
+		);
+	}
+
+	private async revealKeyUsage(key: string, translationValue?: string) {
 		try {
-			// Use the search command to find the key usage
-			await vscode.commands.executeCommand("workbench.action.findInFiles", {
-				query: key,
-				isRegex: false,
-				isCaseSensitive: false,
-			});
+			// Get configuration
+			const config = vscode.workspace.getConfiguration("i18nSearch");
+			const enableMixedSearch = config.get<boolean>("enableMixedSearch", true);
+
+			if (enableMixedSearch && translationValue) {
+				// Escape special regex characters in both key and value
+				const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+				const escapedValue = translationValue.replace(
+					/[.*+?^${}()|[\]\\]/g,
+					"\\$&",
+				);
+
+				// Build regex pattern to search for both key and value
+				const searchPattern = `${escapedKey}|${escapedValue}`;
+
+				// Use the search command to find both key and hardcoded text
+				await vscode.commands.executeCommand("workbench.action.findInFiles", {
+					query: searchPattern,
+					isRegex: true,
+					isCaseSensitive: false,
+				});
+			} else {
+				// Just search for the translation key
+				await vscode.commands.executeCommand("workbench.action.findInFiles", {
+					query: key,
+					isRegex: false,
+					isCaseSensitive: false,
+				});
+			}
 		} catch (error) {
 			vscode.window.showErrorMessage(`Error finding usage for key: ${key}`);
 		}
@@ -164,7 +214,7 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 	}
 
 	private getHtml(): string {
-		return `<!DOCTYPE html><html><head><style>body{font-family:var(--vscode-font-family);font-size:var(--vscode-font-size);color:var(--vscode-foreground);background-color:var(--vscode-sideBar-background);margin:0;padding:10px}#search{width:100%;padding:8px;border:1px solid var(--vscode-input-border);background-color:var(--vscode-input-background);color:var(--vscode-input-foreground);border-radius:4px;box-sizing:border-box;margin-bottom:10px}#search:focus{outline:1px solid var(--vscode-focusBorder);border-color:var(--vscode-focusBorder)}#results{list-style:none;padding:0;margin:0}.result-item{padding:8px;margin:4px 0;background-color:var(--vscode-list-hoverBackground);border-radius:4px;cursor:pointer;transition:background-color 0.2s;outline:none}.result-item:hover,.result-item:focus{background-color:var(--vscode-list-activeSelectionBackground);color:var(--vscode-list-activeSelectionForeground)}.result-item.selected{background-color:var(--vscode-list-activeSelectionBackground);color:var(--vscode-list-activeSelectionForeground);border:1px solid var(--vscode-focusBorder)}.result-key{font-weight:bold;color:var(--vscode-textPreformat-foreground)}.result-value{color:var(--vscode-descriptionForeground);font-size:0.9em;margin-top:2px}.no-results{color:var(--vscode-descriptionForeground);text-align:center;padding:20px;font-style:italic}</style></head><body><input id="search" type="text" placeholder="Search for translation text..." /><ul id="results"></ul><script>const vscode=acquireVsCodeApi();let searchTimeout,selectedIndex=-1,currentResults=[];document.getElementById('search').addEventListener('input',e=>{clearTimeout(searchTimeout);searchTimeout=setTimeout(()=>{vscode.postMessage({type:'search',text:e.target.value})},300)});document.addEventListener('keydown',e=>{const results=document.querySelectorAll('.result-item');if(results.length===0)return;switch(e.key){case'ArrowDown':e.preventDefault();selectedIndex=Math.min(selectedIndex+1,results.length-1);updateSelection();break;case'ArrowUp':e.preventDefault();selectedIndex=Math.max(selectedIndex-1,0);updateSelection();break;case'Enter':e.preventDefault();if(selectedIndex>=0&&selectedIndex<results.length){const selectedItem=results[selectedIndex];vscode.postMessage({type:'reveal',key:selectedItem.dataset.key})}break}});function updateSelection(){const results=document.querySelectorAll('.result-item');results.forEach((item,index)=>{if(index===selectedIndex){item.classList.add('selected');item.focus()}else{item.classList.remove('selected')}})}function displayResults(results){currentResults=results;selectedIndex=-1;const ul=document.getElementById('results');if(results.length===0){ul.innerHTML='<div class="no-results">No translation keys found</div>'}else{ul.innerHTML=results.map((r,index)=>'<li class="result-item" data-key="'+r.key+'" tabindex="0"><div class="result-key">'+r.key+'</div><div class="result-value">'+r.value+'</div></li>').join('');ul.querySelectorAll('.result-item').forEach((item,index)=>{item.onclick=()=>{vscode.postMessage({type:'reveal',key:item.dataset.key})};item.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();vscode.postMessage({type:'reveal',key:item.dataset.key})}})});}}window.addEventListener('message',event=>{const{type,results,searchTerm}=event.data;if(type==='results'){displayResults(results)}else if(type==='restoreSearch'){const searchInput=document.getElementById('search');if(searchInput&&searchTerm){searchInput.value=searchTerm;displayResults(results)}}else if(type==='focusSearch'){const searchInput=document.getElementById('search');if(searchInput){searchInput.focus();searchInput.select()}}else if(type==='webviewReady'){vscode.postMessage({type:'webviewReady'})}});document.addEventListener('DOMContentLoaded',()=>{vscode.postMessage({type:'webviewReady'})});</script></body></html>`;
+		return `<!DOCTYPE html><html><head><style>body{font-family:var(--vscode-font-family);font-size:var(--vscode-font-size);color:var(--vscode-foreground);background-color:var(--vscode-sideBar-background);margin:0;padding:10px}#search{width:100%;padding:8px;border:1px solid var(--vscode-input-border);background-color:var(--vscode-input-background);color:var(--vscode-input-foreground);border-radius:4px;box-sizing:border-box;margin-bottom:10px}#search:focus{outline:1px solid var(--vscode-focusBorder);border-color:var(--vscode-focusBorder)}#results{list-style:none;padding:0;margin:0}.result-item{padding:8px;margin:4px 0;background-color:var(--vscode-list-hoverBackground);border-radius:4px;cursor:pointer;transition:background-color 0.2s;outline:none}.result-item:hover,.result-item:focus{background-color:var(--vscode-list-activeSelectionBackground);color:var(--vscode-list-activeSelectionForeground)}.result-item.selected{background-color:var(--vscode-list-activeSelectionBackground);color:var(--vscode-list-activeSelectionForeground);border:1px solid var(--vscode-focusBorder)}.result-key{font-weight:bold;color:var(--vscode-textPreformat-foreground)}.result-value{color:var(--vscode-descriptionForeground);font-size:0.9em;margin-top:2px}.no-results{color:var(--vscode-descriptionForeground);text-align:center;padding:20px;font-style:italic}.mixed-search-btn{background-color:var(--vscode-button-background);color:var(--vscode-button-foreground);border:1px solid var(--vscode-button-border);border-radius:4px;padding:6px 12px;margin:8px 0;cursor:pointer;font-size:0.9em;width:100%;text-align:center}.mixed-search-btn:hover{background-color:var(--vscode-button-hoverBackground)}.codebase-search-btn{background-color:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);border:1px solid var(--vscode-button-secondaryBorder);border-radius:4px;padding:6px 12px;margin:8px 0;cursor:pointer;font-size:0.9em;width:100%;text-align:center}.codebase-search-btn:hover{background-color:var(--vscode-button-secondaryHoverBackground)}</style></head><body><input id="search" type="text" placeholder="Search for translation text..." /><ul id="results"></ul><script>const vscode=acquireVsCodeApi();let searchTimeout,selectedIndex=-1,currentResults=[],currentSearchText="";document.getElementById('search').addEventListener('input',e=>{clearTimeout(searchTimeout);searchTimeout=setTimeout(()=>{vscode.postMessage({type:'search',text:e.target.value})},300)});document.addEventListener('keydown',e=>{const results=document.querySelectorAll('.result-item');if(results.length===0)return;switch(e.key){case'ArrowDown':e.preventDefault();selectedIndex=Math.min(selectedIndex+1,results.length-1);updateSelection();break;case'ArrowUp':e.preventDefault();selectedIndex=Math.max(selectedIndex-1,0);updateSelection();break;case'Enter':e.preventDefault();if(selectedIndex>=0&&selectedIndex<results.length){const selectedItem=results[selectedIndex];if(selectedItem.dataset.key){vscode.postMessage({type:'reveal',key:selectedItem.dataset.key,value:selectedItem.dataset.value})}}break}});function updateSelection(){const results=document.querySelectorAll('.result-item');results.forEach((item,index)=>{if(index===selectedIndex){item.classList.add('selected');item.focus()}else{item.classList.remove('selected')}})}function displayResults(results,searchText,enableMixedSearch,showCodebaseSearchOption){currentResults=results;currentSearchText=searchText;selectedIndex=-1;const ul=document.getElementById('results');if(results.length===0){let html='<div class="no-results">No translation keys found</div>';if(showCodebaseSearchOption&&searchText){html+='<button class="codebase-search-btn" onclick="searchCodebase()">Search codebase instead</button>'}ul.innerHTML=html}else{let html=results.map((r,index)=>'<li class="result-item" data-key="'+r.key+'" data-value="'+r.value+'" tabindex="0"><div class="result-key">'+r.key+'</div><div class="result-value">'+r.value+'</div></li>').join('');if(enableMixedSearch&&searchText){html+='<li><button class="mixed-search-btn" onclick="searchCodebase()">Also search codebase for "'+searchText+'"</button></li>'}ul.innerHTML=html;ul.querySelectorAll('.result-item').forEach((item,index)=>{if(item.dataset.key){item.onclick=()=>{vscode.postMessage({type:'reveal',key:item.dataset.key,value:item.dataset.value})};item.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();vscode.postMessage({type:'reveal',key:item.dataset.key,value:item.dataset.value})}})}})}}function searchCodebase(){if(currentSearchText){vscode.postMessage({type:'searchCodebase',searchText:currentSearchText})}}window.addEventListener('message',event=>{const{type,results,searchTerm,searchText,enableMixedSearch,showCodebaseSearchOption}=event.data;if(type==='results'){displayResults(results,searchText,enableMixedSearch,showCodebaseSearchOption)}else if(type==='restoreSearch'){const searchInput=document.getElementById('search');if(searchInput&&searchTerm){searchInput.value=searchTerm;displayResults(results,searchTerm,true,true)}}else if(type==='focusSearch'){const searchInput=document.getElementById('search');if(searchInput){searchInput.focus();searchInput.select()}}else if(type==='webviewReady'){vscode.postMessage({type:'webviewReady'})}});document.addEventListener('DOMContentLoaded',()=>{vscode.postMessage({type:'webviewReady'})});</script></body></html>`;
 	}
 }
 
@@ -544,5 +594,27 @@ export function activate(context: vscode.ExtensionContext) {
 					searchViewProvider.focusSearch();
 				});
 		}),
+	);
+
+	// Register command to search codebase
+	context.subscriptions.push(
+		vscode.commands.registerCommand(
+			"i18n-search.searchCodebase",
+			async (searchTerm?: string) => {
+				if (!searchTerm) {
+					searchTerm = await vscode.window.showInputBox({
+						prompt: "Enter text to search in codebase",
+						placeHolder: "e.g., Hello World",
+					});
+					if (!searchTerm) return;
+				}
+
+				await vscode.commands.executeCommand("workbench.action.findInFiles", {
+					query: searchTerm,
+					isRegex: false,
+					isCaseSensitive: false,
+				});
+			},
+		),
 	);
 }
