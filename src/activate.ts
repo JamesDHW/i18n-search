@@ -177,6 +177,9 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 			const config = vscode.workspace.getConfiguration("i18nSearch");
 			const enableMixedSearch = config.get<boolean>("enableMixedSearch", true);
 
+			let searchPattern: string;
+			let isRegex: boolean;
+
 			if (enableMixedSearch && translationValue) {
 				// Escape special regex characters in both key and value
 				const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -186,24 +189,63 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 				);
 
 				// Build regex pattern to search for both key and value
-				const searchPattern = `${escapedKey}|${escapedValue}`;
-
-				// Use the search command to find both key and hardcoded text
-				await vscode.commands.executeCommand("workbench.action.findInFiles", {
-					query: searchPattern,
-					isRegex: true,
-					isCaseSensitive: false,
-				});
+				searchPattern = `${escapedKey}|${escapedValue}`;
+				isRegex = true;
 			} else {
 				// Just search for the translation key
-				await vscode.commands.executeCommand("workbench.action.findInFiles", {
-					query: key,
-					isRegex: false,
-					isCaseSensitive: false,
-				});
+				searchPattern = key;
+				isRegex = false;
 			}
+
+			// Use the search command to find matches
+			await vscode.commands.executeCommand("workbench.action.findInFiles", {
+				query: searchPattern,
+				isRegex: isRegex,
+				isCaseSensitive: false,
+			});
+
+			// Jump to first occurrence
+			await this.jumpToFirstOccurrence(searchPattern, isRegex);
 		} catch (error) {
 			vscode.window.showErrorMessage(`Error finding usage for key: ${key}`);
+		}
+	}
+
+	private async jumpToFirstOccurrence(searchPattern: string, isRegex: boolean) {
+		try {
+			// Use VS Code's search command which automatically respects all exclusion policies
+			await vscode.commands.executeCommand("workbench.action.findInFiles", {
+				query: searchPattern,
+				isRegex: isRegex,
+				isCaseSensitive: false,
+			});
+
+			// Wait a moment for search to complete, then jump to first result
+			setTimeout(async () => {
+				try {
+					// Press Enter to execute the search and show results
+					await vscode.commands.executeCommand(
+						"search.action.refreshSearchResults",
+					);
+
+					// Wait a bit more for results to appear, then navigate
+					setTimeout(async () => {
+						try {
+							// Navigate to the first result
+							await vscode.commands.executeCommand(
+								"search.action.focusNextSearchResult",
+							);
+							await vscode.commands.executeCommand("search.action.openResult");
+						} catch (error) {
+							console.error("Error navigating to search result:", error);
+						}
+					}, 100);
+				} catch (error) {
+					console.error("Error refreshing search results:", error);
+				}
+			}, 300);
+		} catch (error) {
+			console.error("Error jumping to first occurrence:", error);
 		}
 	}
 
