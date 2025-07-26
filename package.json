@@ -65,6 +65,13 @@
           "type": "boolean",
           "default": true,
           "description": "Enable mixed search to search both translations and codebase simultaneously"
+        },
+        "i18nSearch.searchTimeout": {
+          "type": "number",
+          "default": 300,
+          "minimum": 100,
+          "maximum": 5000,
+          "description": "Timeout in milliseconds to wait for search results before navigating"
         }
       }
     },
