@@ -204,9 +204,10 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 		isRegex: boolean,
 	) {
 		try {
-			// Get configuration for timeout
+			// Get configuration for timeout and jump behavior
 			const config = vscode.workspace.getConfiguration("i18nSearch");
 			const searchTimeout = config.get<number>("searchTimeout", 300);
+			const jumpToFirstResult = config.get<boolean>("jumpToFirstResult", true);
 
 			// Use the workbench action to find matches and show results
 			await vscode.commands.executeCommand("workbench.action.findInFiles", {
@@ -220,14 +221,17 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 				"search.action.refreshSearchResults",
 			);
 
-			// Wait for results to load, then navigate
-			await new Promise((resolve) => setTimeout(resolve, searchTimeout));
+			// Only wait and navigate if jumpToFirstResult is enabled
+			if (jumpToFirstResult) {
+				// Wait for results to load, then navigate
+				await new Promise((resolve) => setTimeout(resolve, searchTimeout));
 
-			// Navigate to the first result
-			await vscode.commands.executeCommand(
-				"search.action.focusNextSearchResult",
-			);
-			await vscode.commands.executeCommand("search.action.openResult");
+				// Navigate to the first result
+				await vscode.commands.executeCommand(
+					"search.action.focusNextSearchResult",
+				);
+				await vscode.commands.executeCommand("search.action.openResult");
+			}
 		} catch (error) {
 			console.error("Error finding matches:", error);
 			vscode.window.showErrorMessage(`Error searching for: ${searchPattern}`);
