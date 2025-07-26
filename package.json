@@ -77,6 +77,17 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically jump to the first search result when clicking on a translation key"
+        },
+        "i18nSearch.logLevel": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warn",
+            "info",
+            "debug"
+          ],
+          "default": "info",
+          "description": "Logging level for the i18n-search extension"
         }
       }
     },
@@ -123,6 +134,11 @@
       {
         "command": "i18n-search.searchCodebase",
         "title": "i18n-search: Search Codebase",
+        "category": "i18n-search"
+      },
+      {
+        "command": "i18n-search.showLogs",
+        "title": "i18n-search: Show Logs",
         "category": "i18n-search"
       }
     ],

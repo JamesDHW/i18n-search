@@ -6,6 +6,104 @@ interface TranslationMap {
 	[key: string]: string[];
 }
 
+// Logger utility
+class Logger {
+	private outputChannel: vscode.OutputChannel;
+	private logLevel: string = "info";
+
+	constructor() {
+		this.outputChannel = vscode.window.createOutputChannel("i18n-search");
+	}
+
+	setLogLevel(level: string) {
+		this.logLevel = level;
+	}
+
+	private shouldLog(level: string): boolean {
+		const levels = { error: 0, warn: 1, info: 2, debug: 3 };
+		return (
+			levels[level as keyof typeof levels] <=
+			levels[this.logLevel as keyof typeof levels]
+		);
+	}
+
+	private formatMessage(
+		level: string,
+		message: string,
+		...args: any[]
+	): string {
+		const timestamp = new Date().toISOString();
+		const formattedArgs =
+			args.length > 0
+				? " " +
+					args
+						.map((arg) =>
+							typeof arg === "object"
+								? JSON.stringify(arg, null, 2)
+								: String(arg),
+						)
+						.join(" ")
+				: "";
+		return `[${timestamp}] [${level.toUpperCase()}] ${message}${formattedArgs}`;
+	}
+
+	debug(message: string, ...args: any[]) {
+		if (this.shouldLog("debug")) {
+			this.outputChannel.appendLine(
+				this.formatMessage("debug", message, ...args),
+			);
+		}
+	}
+
+	info(message: string, ...args: any[]) {
+		if (this.shouldLog("info")) {
+			this.outputChannel.appendLine(
+				this.formatMessage("info", message, ...args),
+			);
+		}
+	}
+
+	warn(message: string, ...args: any[]) {
+		if (this.shouldLog("warn")) {
+			this.outputChannel.appendLine(
+				this.formatMessage("warn", message, ...args),
+			);
+		}
+	}
+
+	error(message: string, error?: Error | any) {
+		if (this.shouldLog("error")) {
+			let errorDetails = "";
+			if (error instanceof Error) {
+				errorDetails = `\n${error.message}\n${error.stack}`;
+			} else if (error) {
+				errorDetails = `\n${JSON.stringify(error, null, 2)}`;
+			}
+			this.outputChannel.appendLine(
+				this.formatMessage("error", message + errorDetails),
+			);
+		}
+	}
+
+	show() {
+		this.outputChannel.show();
+	}
+}
+
+// Global logger instance
+let logger: Logger;
+
+// Logger singleton that's always available
+const getLogger = () =>
+	logger || {
+		debug: () => {},
+		info: () => {},
+		warn: () => {},
+		error: () => {},
+		show: () => {},
+		setLogLevel: () => {},
+	};
+
 class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 	public static readonly viewType = "i18nSearchView";
 	private _view?: vscode.WebviewView;
@@ -17,7 +115,7 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 		[];
 
 	constructor(private context: vscode.ExtensionContext) {
-		console.log("I18nSearchViewProvider constructor called");
+		getLogger().debug("I18nSearchViewProvider constructor called");
 		// Load last search from global state
 		this.lastSearchTerm = context.globalState.get(
 			"i18nSearch.lastSearchTerm",
@@ -72,9 +170,9 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 	}
 
 	resolveWebviewView(view: vscode.WebviewView) {
-		console.log("WebviewView resolved!");
-		console.log("View type:", view.viewType);
-		console.log("View visible:", view.visible);
+		getLogger().debug("WebviewView resolved!");
+		getLogger().debug("View type:", view.viewType);
+		getLogger().debug("View visible:", view.visible);
 
 		this._view = view;
 
@@ -83,9 +181,9 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 		};
 
 		const html = this.getHtml();
-		console.log("Setting webview HTML, length:", html.length);
+		getLogger().debug("Setting webview HTML, length:", html.length);
 		view.webview.html = html;
-		console.log("Webview HTML set");
+		getLogger().debug("Webview HTML set");
 
 		// Send initial data
 		view.webview.postMessage({
@@ -94,10 +192,10 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 		});
 
 		view.webview.onDidReceiveMessage((msg) => {
-			console.log("Received message from webview:", msg);
+			getLogger().debug("Received message from webview:", msg);
 			if (msg.type === "search") {
 				const matches = this.findTranslations(msg.text);
-				console.log("Search results:", matches);
+				getLogger().debug("Search results:", matches);
 
 				// Get configuration
 				const config = vscode.workspace.getConfiguration("i18nSearch");
@@ -121,7 +219,7 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 				this.searchCodebase(msg.searchText);
 			} else if (msg.type === "webviewReady") {
 				this.webviewReady = true;
-				console.log("Webview is ready for interaction");
+				getLogger().debug("Webview is ready for interaction");
 
 				// Process any pending focus requests
 				if (this.pendingFocus) {
@@ -135,7 +233,7 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 
 		// Listen for visibility changes
 		view.onDidChangeVisibility(() => {
-			console.log("View visibility changed:", view.visible);
+			getLogger().debug("View visibility changed:", view.visible);
 		});
 	}
 
@@ -233,7 +331,7 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 				await vscode.commands.executeCommand("search.action.openResult");
 			}
 		} catch (error) {
-			console.error("Error finding matches:", error);
+			getLogger().error("Error finding matches:", error);
 			vscode.window.showErrorMessage(`Error searching for: ${searchPattern}`);
 		}
 	}
@@ -354,13 +452,13 @@ async function loadTranslations(filePath: string): Promise<TranslationMap> {
 		try {
 			translationObj = JSON.parse(jsonString);
 		} catch (parseError) {
-			console.error("JSON parse error:", parseError);
-			console.error("Attempted to parse:", jsonString);
+			getLogger().error("JSON parse error:", parseError);
+			getLogger().error("Attempted to parse:", jsonString);
 			// Fallback: try to use Function constructor (safer than eval)
 			try {
 				translationObj = Function(`return ${objectString}`)();
 			} catch (fallbackError) {
-				console.error("Fallback parse also failed:", fallbackError);
+				getLogger().error("Fallback parse also failed:", fallbackError);
 				throw new Error("Failed to parse translation object");
 			}
 		}
@@ -385,17 +483,24 @@ async function loadTranslations(filePath: string): Promise<TranslationMap> {
 		}
 
 		flatten(translationObj);
-		console.log("Translation map loaded:", map);
-		console.log("Translation values:", Object.keys(map));
+		getLogger().debug("Translation map loaded:", map);
+		getLogger().debug("Translation values:", Object.keys(map));
 		return map;
 	} catch (error) {
-		console.error("Failed to load translations:", error);
+		getLogger().error("Failed to load translations:", error);
 		return {};
 	}
 }
 
 export function activate(context: vscode.ExtensionContext) {
-	console.log("i18n-search extension is now active!");
+	logger = new Logger();
+
+	// Set log level from configuration
+	const config = vscode.workspace.getConfiguration("i18nSearch");
+	const logLevel = config.get<string>("logLevel", "info");
+	logger.setLogLevel(logLevel);
+
+	logger.info("i18n-search extension is now active!");
 
 	let translationMap: TranslationMap = {};
 	let fileSystemProvider: I18nFileSystemProvider;
@@ -406,8 +511,8 @@ export function activate(context: vscode.ExtensionContext) {
 	const scheme = "i18n";
 
 	// Register webview view provider immediately
-	console.log("Registering WebviewViewProvider...");
-	console.log("View type:", I18nSearchViewProvider.viewType);
+	getLogger().debug("Registering WebviewViewProvider...");
+	getLogger().debug("View type:", I18nSearchViewProvider.viewType);
 
 	// Register the provider for the sidebar view
 	const registration = vscode.window.registerWebviewViewProvider(
@@ -416,7 +521,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(registration);
-	console.log("WebviewViewProvider registered successfully");
+	getLogger().debug("WebviewViewProvider registered successfully");
 
 	// Also register for the panel view
 	const panelRegistration = vscode.window.registerWebviewViewProvider(
@@ -425,12 +530,14 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(panelRegistration);
-	console.log("Panel WebviewViewProvider registered successfully");
+	getLogger().debug("Panel WebviewViewProvider registered successfully");
 
 	// Try to trigger view creation when editor changes
 	context.subscriptions.push(
 		vscode.window.onDidChangeActiveTextEditor(() => {
-			console.log("Editor changed, checking if view needs to be created...");
+			getLogger().debug(
+				"Editor changed, checking if view needs to be created...",
+			);
 		}),
 	);
 
@@ -451,11 +558,11 @@ export function activate(context: vscode.ExtensionContext) {
 				),
 			);
 
-			console.log(
+			getLogger().info(
 				`Loaded ${Object.keys(translationMap).length} translation values`,
 			);
 		} catch (error) {
-			console.error("Failed to initialize i18n-search:", error);
+			getLogger().error("Failed to initialize i18n-search:", error);
 			vscode.window.showErrorMessage(
 				`Failed to load translation file: ${error}`,
 			);
@@ -477,7 +584,7 @@ export function activate(context: vscode.ExtensionContext) {
 		const watcher = vscode.workspace.createFileSystemWatcher(absPath);
 
 		watcher.onDidChange(async () => {
-			console.log("Translation file changed, reloading...");
+			getLogger().info("Translation file changed, reloading...");
 			translationMap = await loadTranslations(catalogPath);
 
 			if (fileSystemProvider) {
@@ -512,7 +619,7 @@ export function activate(context: vscode.ExtensionContext) {
 						`Searching for key usage: ${keyPattern}`,
 					);
 				} catch (error) {
-					console.error("Error finding key usage:", error);
+					getLogger().error("Error finding key usage:", error);
 					vscode.window.showErrorMessage(`Error finding usage for key: ${key}`);
 				}
 			}
@@ -586,6 +693,19 @@ export function activate(context: vscode.ExtensionContext) {
 		),
 	);
 
+	// Listen for configuration changes
+	context.subscriptions.push(
+		vscode.workspace.onDidChangeConfiguration((event) => {
+			if (event.affectsConfiguration("i18nSearch.logLevel")) {
+				const newLogLevel = vscode.workspace
+					.getConfiguration("i18nSearch")
+					.get<string>("logLevel", "info");
+				getLogger().setLogLevel(newLogLevel);
+				getLogger().debug("Log level updated to:", newLogLevel);
+			}
+		}),
+	);
+
 	// Initialize the extension
 	initializeExtension().then(() => {
 		// Update the search view with translations after they're loaded
@@ -608,7 +728,7 @@ export function activate(context: vscode.ExtensionContext) {
 	// Register command to show the search panel
 	context.subscriptions.push(
 		vscode.commands.registerCommand("i18n-search.showSearchPanel", () => {
-			console.log("Showing search panel...");
+			getLogger().debug("Showing search panel...");
 			vscode.commands.executeCommand("workbench.view.extension.i18nSearch");
 		}),
 	);
@@ -616,7 +736,7 @@ export function activate(context: vscode.ExtensionContext) {
 	// Register command to focus search input
 	context.subscriptions.push(
 		vscode.commands.registerCommand("i18n-search.focusSearch", () => {
-			console.log("Focusing search input...");
+			getLogger().debug("Focusing search input...");
 			// First ensure the view is visible
 			vscode.commands
 				.executeCommand("workbench.view.extension.i18nSearch")
@@ -647,5 +767,12 @@ export function activate(context: vscode.ExtensionContext) {
 				});
 			},
 		),
+	);
+
+	// Register command to show log output
+	context.subscriptions.push(
+		vscode.commands.registerCommand("i18n-search.showLogs", () => {
+			getLogger().show();
+		}),
 	);
 }
