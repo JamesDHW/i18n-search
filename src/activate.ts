@@ -192,55 +192,41 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 				isRegex = false;
 			}
 
-			// Use the search command to find matches
-			await vscode.commands.executeCommand("workbench.action.findInFiles", {
-				query: searchPattern,
-				isRegex: isRegex,
-				isCaseSensitive: false,
-			});
-
-			// Jump to first occurrence
-			await this.jumpToFirstOccurrence(searchPattern, isRegex);
+			// Use the official VS Code API to find and navigate to the first match
+			await this.findAndNavigateToFirstMatch(searchPattern, isRegex);
 		} catch (error) {
 			vscode.window.showErrorMessage(`Error finding usage for key: ${key}`);
 		}
 	}
 
-	private async jumpToFirstOccurrence(searchPattern: string, isRegex: boolean) {
+	private async findAndNavigateToFirstMatch(
+		searchPattern: string,
+		isRegex: boolean,
+	) {
 		try {
-			// Use VS Code's search command which automatically respects all exclusion policies
+			// Use the workbench action to find matches and show results
 			await vscode.commands.executeCommand("workbench.action.findInFiles", {
 				query: searchPattern,
 				isRegex: isRegex,
 				isCaseSensitive: false,
 			});
 
-			// Wait a moment for search to complete, then jump to first result
-			setTimeout(async () => {
-				try {
-					// Press Enter to execute the search and show results
-					await vscode.commands.executeCommand(
-						"search.action.refreshSearchResults",
-					);
+			// Execute the search to ensure results are loaded
+			await vscode.commands.executeCommand(
+				"search.action.refreshSearchResults",
+			);
 
-					// Wait a bit more for results to appear, then navigate
-					setTimeout(async () => {
-						try {
-							// Navigate to the first result
-							await vscode.commands.executeCommand(
-								"search.action.focusNextSearchResult",
-							);
-							await vscode.commands.executeCommand("search.action.openResult");
-						} catch (error) {
-							console.error("Error navigating to search result:", error);
-						}
-					}, 100);
-				} catch (error) {
-					console.error("Error refreshing search results:", error);
-				}
-			}, 300);
+			// Wait a moment for results to load, then navigate
+			await new Promise((resolve) => setTimeout(resolve, 300));
+
+			// Navigate to the first result
+			await vscode.commands.executeCommand(
+				"search.action.focusNextSearchResult",
+			);
+			await vscode.commands.executeCommand("search.action.openResult");
 		} catch (error) {
-			console.error("Error jumping to first occurrence:", error);
+			console.error("Error finding matches:", error);
+			vscode.window.showErrorMessage(`Error searching for: ${searchPattern}`);
 		}
 	}
 
