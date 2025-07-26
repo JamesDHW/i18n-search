@@ -142,11 +142,19 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
             border-radius: 4px;
             cursor: pointer;
             transition: background-color 0.2s;
+            outline: none;
           }
           
-          .result-item:hover {
+          .result-item:hover,
+          .result-item:focus {
             background-color: var(--vscode-list-activeSelectionBackground);
             color: var(--vscode-list-activeSelectionForeground);
+          }
+          
+          .result-item.selected {
+            background-color: var(--vscode-list-activeSelectionBackground);
+            color: var(--vscode-list-activeSelectionForeground);
+            border: 1px solid var(--vscode-focusBorder);
           }
           
           .result-key {
@@ -175,6 +183,8 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
         <script>
           const vscode = acquireVsCodeApi();
           let searchTimeout;
+          let selectedIndex = -1;
+          let currentResults = [];
           
           document.getElementById('search').addEventListener('input', e => {
             clearTimeout(searchTimeout);
@@ -183,24 +193,72 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
             }, 300);
           });
 
+          // Handle keyboard navigation
+          document.addEventListener('keydown', e => {
+            const results = document.querySelectorAll('.result-item');
+            if (results.length === 0) return;
+            
+            switch (e.key) {
+              case 'ArrowDown':
+                e.preventDefault();
+                selectedIndex = Math.min(selectedIndex + 1, results.length - 1);
+                updateSelection();
+                break;
+              case 'ArrowUp':
+                e.preventDefault();
+                selectedIndex = Math.max(selectedIndex - 1, 0);
+                updateSelection();
+                break;
+              case 'Enter':
+                e.preventDefault();
+                if (selectedIndex >= 0 && selectedIndex < results.length) {
+                  const selectedItem = results[selectedIndex];
+                  vscode.postMessage({ type: 'reveal', key: selectedItem.dataset.key });
+                }
+                break;
+            }
+          });
+
+          function updateSelection() {
+            const results = document.querySelectorAll('.result-item');
+            results.forEach((item, index) => {
+              if (index === selectedIndex) {
+                item.classList.add('selected');
+                item.focus();
+              } else {
+                item.classList.remove('selected');
+              }
+            });
+          }
+
           window.addEventListener('message', event => {
             const { type, results } = event.data;
             if (type === 'results') {
+              currentResults = results;
+              selectedIndex = -1;
               const ul = document.getElementById('results');
               if (results.length === 0) {
                 ul.innerHTML = '<div class="no-results">No translation keys found</div>';
               } else {
-                ul.innerHTML = results.map(r =>
-                  \`<li class="result-item" data-key="\${r.key}">
+                ul.innerHTML = results.map((r, index) =>
+                  \`<li class="result-item" data-key="\${r.key}" tabindex="0">
                     <div class="result-key">\${r.key}</div>
                     <div class="result-value">\${r.value}</div>
                   </li>\`
                 ).join('');
                 
-                ul.querySelectorAll('.result-item').forEach(item => {
+                ul.querySelectorAll('.result-item').forEach((item, index) => {
                   item.onclick = () => {
                     vscode.postMessage({ type: 'reveal', key: item.dataset.key });
                   };
+                  
+                  // Handle Enter key on individual items
+                  item.addEventListener('keydown', e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      vscode.postMessage({ type: 'reveal', key: item.dataset.key });
+                    }
+                  });
                 });
               }
             }
@@ -362,14 +420,15 @@ export function activate(context: vscode.ExtensionContext) {
 
 	let translationMap: TranslationMap = {};
 	let fileSystemProvider: I18nFileSystemProvider;
-	let searchViewProvider: I18nSearchViewProvider;
+	const searchViewProvider: I18nSearchViewProvider = new I18nSearchViewProvider(
+		context,
+	);
 
 	const scheme = "i18n";
 
 	// Register webview view provider immediately
 	console.log("Registering WebviewViewProvider...");
 	console.log("View type:", I18nSearchViewProvider.viewType);
-	searchViewProvider = new I18nSearchViewProvider(context);
 
 	// Register the provider for the sidebar view
 	const registration = vscode.window.registerWebviewViewProvider(
@@ -458,19 +517,16 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.workspace.onDidOpenTextDocument(async (document) => {
 			if (document.uri.scheme === scheme) {
-				const key = document.uri.path.slice(1, -3); // remove leading '/' and '.ts'
+				const key = document.uri.path.slice(1, -3);
 				const keyPattern = `t("${key}")`;
 
 				try {
 					// Use the search API to find the key usage
-					const searchResults = await vscode.commands.executeCommand(
-						"workbench.action.findInFiles",
-						{
-							query: keyPattern,
-							isRegex: false,
-							isCaseSensitive: true,
-						},
-					);
+					await vscode.commands.executeCommand("workbench.action.findInFiles", {
+						query: keyPattern,
+						isRegex: false,
+						isCaseSensitive: true,
+					});
 
 					// Since we can't directly get the results, we'll show a message
 					vscode.window.showInformationMessage(
