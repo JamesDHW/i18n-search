@@ -20,6 +20,12 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 		this.updateResults();
 	}
 
+	focusSearch() {
+		if (this._view) {
+			this._view.webview.postMessage({ type: "focusSearch" });
+		}
+	}
+
 	resolveWebviewView(view: vscode.WebviewView) {
 		console.log("WebviewView resolved!");
 		console.log("View type:", view.viewType);
@@ -261,6 +267,8 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
                   });
                 });
               }
+            } else if (type === 'focusSearch') {
+              document.getElementById('search').focus();
             }
           });
         </script>
@@ -631,6 +639,20 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand("i18n-search.showSearchPanel", () => {
 			console.log("Showing search panel...");
 			vscode.commands.executeCommand("workbench.view.extension.i18nSearch");
+		}),
+	);
+
+	// Register command to focus search input
+	context.subscriptions.push(
+		vscode.commands.registerCommand("i18n-search.focusSearch", () => {
+			console.log("Focusing search input...");
+			// First ensure the view is visible
+			vscode.commands
+				.executeCommand("workbench.view.extension.i18nSearch")
+				.then(() => {
+					// Send message to focus the search input
+					searchViewProvider.focusSearch();
+				});
 		}),
 	);
 }

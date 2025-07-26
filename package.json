@@ -1,131 +1,144 @@
 {
-	"name": "i18n-search",
-	"displayName": "i18n-search",
-	"description": "Search for translation keys when searching for translated values in VS Code",
-	"version": "1.0.0",
-	"publisher": "JamesHaworthWheatman",
-	"engines": {
-		"vscode": "^1.96.0"
-	},
-	"categories": [
-		"Other"
-	],
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/JamesDHW/i18n-search"
-	},
-	"icon": "public/i18n-search.png",
-	"activationEvents": [
-		"*"
-	],
-	"main": "./dist/extension.js",
-	"contributes": {
-		"viewsContainers": {
-			"activitybar": [
-				{
-					"id": "i18nSearch",
-					"title": "I18n Search",
-					"icon": "public/i18n-search.png"
-				}
-			],
-			"panel": [
-				{
-					"id": "i18nSearchPanel",
-					"title": "I18n Search",
-					"icon": "public/i18n-search.png"
-				}
-			]
-		},
-		"views": {
-			"i18nSearch": [
-				{
-					"id": "i18nSearchView",
-					"name": "Search Translations",
-					"when": "true",
-					"type": "webview"
-				}
-			],
-			"i18nSearchPanel": [
-				{
-					"id": "i18nSearchPanelView",
-					"name": "Search Translations",
-					"when": "true",
-					"type": "webview"
-				}
-			]
-		},
-		"configuration": {
-			"properties": {
-				"i18nSearch.catalogPath": {
-					"type": "string",
-					"default": "./src/i18n/en.ts",
-					"description": "Path to the default-exported translation file"
-				}
-			}
-		},
-		"commands": [
-			{
-				"command": "i18n-search.helloWorld",
-				"title": "Hello World"
-			},
-			{
-				"command": "i18n-search.searchForKey",
-				"title": "i18n-search: Search for Key",
-				"category": "i18n-search"
-			},
-			{
-				"command": "i18n-search.searchForValue",
-				"title": "i18n-search: Search for Value",
-				"category": "i18n-search"
-			},
-			{
-				"command": "i18n-search.enhanceCurrentSearch",
-				"title": "i18n-search: Enhance Current Search with Translation Keys",
-				"category": "i18n-search"
-			},
-			{
-				"command": "i18n-search.searchTranslationKeys",
-				"title": "i18n-search: Search Translation Keys",
-				"category": "i18n-search"
-			},
-			{
-				"command": "i18n-search.searchWithTranslationKeys",
-				"title": "i18n-search: Search with Translation Keys",
-				"category": "i18n-search"
-			},
-			{
-				"command": "i18n-search.showSearchPanel",
-				"title": "i18n-search: Show Search Panel",
-				"category": "i18n-search"
-			}
-		]
-	},
-	"scripts": {
-		"vscode:prepublish": "pnpm run package",
-		"compile": "pnpm run check-types && pnpm run lint && node esbuild.js",
-		"watch": "npm-run-all -p watch:*",
-		"watch:esbuild": "node esbuild.js --watch",
-		"watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
-		"package": "pnpm run check-types && pnpm run lint && node esbuild.js --production",
-		"compile-tests": "tsc -p . --outDir out",
-		"watch-tests": "tsc -p . -w --outDir out",
-		"pretest": "pnpm run compile-tests && pnpm run compile && pnpm run lint",
-		"check-types": "tsc --noEmit",
-		"lint": "eslint src",
-		"test": "vscode-test"
-	},
-	"devDependencies": {
-		"@biomejs/biome": "2.1.2",
-		"@types/mocha": "^10.0.9",
-		"@types/node": "20.x",
-		"@types/vscode": "^1.96.0",
-		"@typescript-eslint/eslint-plugin": "^8.10.0",
-		"@typescript-eslint/parser": "^8.7.0",
-		"@vscode/test-cli": "^0.0.10",
-		"@vscode/test-electron": "^2.4.1",
-		"esbuild": "^0.24.0",
-		"eslint": "^9.13.0",
-		"npm-run-all": "^4.1.5",
-		"typescript": "^5.6.3"
-	}
+  "name": "i18n-search",
+  "displayName": "i18n-search",
+  "description": "Search for translation keys when searching for translated values in VS Code",
+  "version": "1.0.0",
+  "publisher": "JamesHaworthWheatman",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JamesDHW/i18n-search"
+  },
+  "icon": "public/i18n-search.png",
+  "activationEvents": [
+    "*"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "i18nSearch",
+          "title": "I18n Search",
+          "icon": "public/i18n-search.png"
+        }
+      ],
+      "panel": [
+        {
+          "id": "i18nSearchPanel",
+          "title": "I18n Search",
+          "icon": "public/i18n-search.png"
+        }
+      ]
+    },
+    "views": {
+      "i18nSearch": [
+        {
+          "id": "i18nSearchView",
+          "name": "Search Translations",
+          "when": "true",
+          "type": "webview"
+        }
+      ],
+      "i18nSearchPanel": [
+        {
+          "id": "i18nSearchPanelView",
+          "name": "Search Translations",
+          "when": "true",
+          "type": "webview"
+        }
+      ]
+    },
+    "configuration": {
+      "properties": {
+        "i18nSearch.catalogPath": {
+          "type": "string",
+          "default": "./src/i18n/en.ts",
+          "description": "Path to the default-exported translation file"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "i18n-search.helloWorld",
+        "title": "Hello World"
+      },
+      {
+        "command": "i18n-search.searchForKey",
+        "title": "i18n-search: Search for Key",
+        "category": "i18n-search"
+      },
+      {
+        "command": "i18n-search.searchForValue",
+        "title": "i18n-search: Search for Value",
+        "category": "i18n-search"
+      },
+      {
+        "command": "i18n-search.enhanceCurrentSearch",
+        "title": "i18n-search: Enhance Current Search with Translation Keys",
+        "category": "i18n-search"
+      },
+      {
+        "command": "i18n-search.searchTranslationKeys",
+        "title": "i18n-search: Search Translation Keys",
+        "category": "i18n-search"
+      },
+      {
+        "command": "i18n-search.searchWithTranslationKeys",
+        "title": "i18n-search: Search with Translation Keys",
+        "category": "i18n-search"
+      },
+      {
+        "command": "i18n-search.showSearchPanel",
+        "title": "i18n-search: Show Search Panel",
+        "category": "i18n-search"
+      },
+      {
+        "command": "i18n-search.focusSearch",
+        "title": "i18n-search: Focus Search Input",
+        "category": "i18n-search"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "i18n-search.focusSearch",
+        "key": "alt+shift+f",
+        "mac": "alt+shift+f",
+        "when": "editorTextFocus"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "pnpm run package",
+    "compile": "pnpm run check-types && pnpm run lint && node esbuild.js",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "package": "pnpm run check-types && pnpm run lint && node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "pnpm run compile-tests && pnpm run compile && pnpm run lint",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.1.2",
+    "@types/mocha": "^10.0.9",
+    "@types/node": "20.x",
+    "@types/vscode": "^1.96.0",
+    "@typescript-eslint/eslint-plugin": "^8.10.0",
+    "@typescript-eslint/parser": "^8.7.0",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.1",
+    "esbuild": "^0.24.0",
+    "eslint": "^9.13.0",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.6.3"
+  }
 }
