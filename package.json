@@ -65,11 +65,6 @@
           "type": "boolean",
           "default": true,
           "description": "Enable mixed search to search both translations and codebase simultaneously"
-        },
-        "i18nSearch.showCodebaseSearchOption": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show 'Search codebase instead' option when no translation results are found"
         }
       }
     },
