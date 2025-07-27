@@ -25,14 +25,14 @@
         {
           "id": "i18nSearch",
           "title": "I18n Search",
-          "icon": "public/i18n-search.png"
+          "icon": "public/i18n-search.svg"
         }
       ],
       "panel": [
         {
           "id": "i18nSearchPanel",
           "title": "I18n Search",
-          "icon": "public/i18n-search.png"
+          "icon": "public/i18n-search.svg"
         }
       ]
     },
