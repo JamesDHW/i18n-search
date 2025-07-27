@@ -56,7 +56,7 @@
     },
     "configuration": {
       "properties": {
-        "i18nSearch.catalogPath": {
+        "i18nSearch.translationFilepath": {
           "type": "string",
           "default": "./src/i18n/en.ts",
           "description": "Path to the default-exported translation file"

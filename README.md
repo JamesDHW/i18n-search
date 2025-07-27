@@ -1,45 +1,44 @@
+
 <p align="center">
   <img src="public/i18n-search.png" width="300" alt="i18n-search Logo" />
 </p>
 
 # i18n-search
 
-A VS Code extension that helps you find translation keys when searching for translated values. This extension integrates with VS Code's global search to surface translation key hits when searching for translated text.
+> [!NOTE]  
+> Find usages of i18n translation keys in the codebase just from the translated text.
+
+
+A VS Code extension that bridges the gap between translated text and translation keys. When you search for translated values like "Hello World", it automatically shows you the corresponding translation to find and navigate directly to usages like `t("common.hello")`.
+
+## The Problem
+
+When working with internationalized applications, developers often need to find where a specific translation key is used in the codebase. Traditional search methods require knowing the exact key name (or adding an extra step of navigating to the translation file first to find the key), but what if you only know the translated text? 
+
+This extension solves that problem by creating a reverse lookup from translated values to their keys.
 
 ## Features
 
-- **Translation File Integration**: Automatically loads and flattens your translation catalog
-- **Virtual File System**: Creates virtual files for each translation key that can be searched
-- **Smart Search**: When you search for a translated value like "Hello World", the extension shows the corresponding translation key `t("common.hello")`
-- **Direct Navigation**: Click on search results to jump directly to where the translation key is used in your codebase
-- **File Watching**: Automatically reloads translations when your translation file changes
+- **🔍 Smart Translation Search**: Search for translated text and find the corresponding translation keys in the codebase
+- **🔄 Mixed Search Mode**: Search both translation keys and their values simultaneously
+- **🎯 Direct Navigation**: Click on search results to jump directly to key usage in your codebase
+- **⚡ Real-time Updates**: Automatically reloads when your translation file changes
+- **📊 Dedicated Search Panel**: Accessible from the activity bar or panel
 
-## Installation
+## Quick Start
 
-1. Clone this repository
-2. Run `pnpm install` to install dependencies
-3. Press `F5` to run the extension in a new Extension Development Host window
+1. **Configure your translation file path** in VS Code settings:
+   - Open Settings (`Cmd+,` / `Ctrl+,`) (or open/create your `.vscode/settings.json`)
+   - Search for "i18nSearch.translationFilepath"
+   - Set to your translation file (default: `./src/i18n/en.ts`)
 
-## Configuration
+2. **Search for translated text**:
+   - Use `Ctrl+Shift+F` (`^+Shift+F`) to focus the search panel
+   - Type a translated value like "Hello World"
+   - See results showing the corresponding translation key `common.helloWorld`
+   - Click to navigate to where that key is used in your code
 
-The extension looks for your translation file at the path specified in the `i18nSearch.catalogPath` setting. By default, it expects the file at `./src/i18n/en.ts`.
-
-To configure the path:
-
-1. Open VS Code settings (`Cmd+,` on macOS, `Ctrl+,` on Windows/Linux)
-2. Search for "i18nSearch.catalogPath"
-3. Set the path to your translation file relative to your workspace root
-
-## Usage
-
-### Basic Search
-
-1. Open the global search panel (`Cmd+Shift+F` on macOS, `Ctrl+Shift+F` on Windows/Linux)
-2. Search for a translated value like "Hello World"
-3. The extension will show results with the corresponding translation keys
-4. Click on a result to navigate to where that key is used in your code
-
-### Translation File Format
+## Translation File Format
 
 Your translation file should export a default object with nested translation keys:
 
@@ -56,58 +55,74 @@ export default {
 };
 ```
 
-### Commands
+You can also use a plain JSON file.
 
-The extension provides several commands that you can access via the command palette (`Cmd+Shift+P`):
+## Commands
 
-- `i18n-search: Search for Key` - Search for a specific translation key
-- `i18n-search: Search for Value` - Search for translation keys that contain a specific value
+Access these commands via the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`):
 
-## Development
+| Command | Description |
+|---------|-------------|
+| `i18n-search: Focus Search Input` | Focus the translation search input |
+| `i18n-search: Show Search Panel` | Open the translation search panel |
+| `i18n-search: Search for Key` | Search for a specific translation key |
+| `i18n-search: Search for Value` | Search for keys containing a specific value |
+| `i18n-search: Search Codebase` | Search for text in your codebase |
+| `i18n-search: Show Logs` | Display extension logs for debugging |
 
-### Building
+## Keyboard Shortcuts
 
-```bash
-pnpm run compile
-```
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+Shift+F` (`^+Shift+F`) | Focus translation search input |
 
-### Watching for Changes
+## Configuration
 
-```bash
-pnpm run watch
-```
+Configure the extension behavior in VS Code settings:
 
-### Testing
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `i18nSearch.translationFilepath` | `./src/i18n/en.ts` | Path to your translation file |
+| `i18nSearch.enableMixedSearch` | `true` | Search both keys and values simultaneously |
+| `i18nSearch.searchTimeout` | `300` | Timeout (ms) before navigating to search results - technical workaround, increase for larger codebases/ slower machines |
+| `i18nSearch.jumpToFirstResult` | `true` | Automatically jump to first result when clicking |
+| `i18nSearch.logLevel` | `info` | Logging level (`error`, `warn`, `info`, `debug`) |
 
-```bash
-pnpm run test
-```
+## Usage Examples
 
-## How It Works
+### Finding Translation Key Usage
 
-1. **Translation Loading**: The extension reads your translation file and flattens the nested structure into a map of values to keys
-2. **Virtual Files**: Creates virtual files under the `i18n:` scheme for each translation key
-3. **Search Integration**: When you search, the extension intercepts the search and includes relevant translation keys
-4. **Navigation**: Clicking on a virtual file result triggers a search for the actual key usage in your codebase
+1. You see "Welcome to our application" in your app
+2. Search for "Welcome to our application" in the translation panel
+3. See result: `t("common.welcome") → Welcome to our application`
+4. Click to find all usages of `t("common.welcome")` in your codebase
 
-## Example
+### Mixed Search Mode
 
-If you have a translation like:
-```typescript
-export default {
-  common: {
-    hello: "Hello World"
-  }
-};
-```
+With `enableMixedSearch` enabled, clicking a translation result will search for both:
+- The translation key: `t("common.hello")`
+- The translated value: `Hello World`
 
-And you search for "Hello World" in VS Code, the extension will show a result like:
-```
-i18n:/common/hello.ts
-t("common.hello")
-```
+This helps find both direct key usage and any hardcoded text that should use the translation key.
 
-Clicking this result will search for `t("common.hello")` in your codebase and take you to the first usage.
+
+## Requirements
+
+- VS Code 1.96.0 or higher
+- TypeScript/JavaScript project with translation files
+- Translation file must export a default object
+
+## Troubleshooting
+
+- **No results showing**: Check that your translation file path is correct in settings
+- **Search not working**: Verify your translation file exports a default object
+- **Navigation issues**: Adjust `searchTimeout` if results aren't loading fast enough
+- **Debug issues**: Use `i18n-search: Show Logs` command and set `logLevel` to `debug`
+
+#### Output Panel
+- **Access**: Go to `View` → `Output` in the menu bar, or use `Ctrl+Shift+U` (`Cmd+Shift+U` on Mac)
+- **Select**: Choose "i18n-search" from the dropdown in the Output panel
+- **Alternative**: Use the `i18n-search: Show Logs` command from the Command Palette
 
 ## Contributing
 
@@ -116,7 +131,3 @@ Clicking this result will search for `t("common.hello")` in your codebase and ta
 3. Make your changes
 4. Add tests if applicable
 5. Submit a pull request
-
-## License
-
-MIT

@@ -30,7 +30,7 @@ export default {
 "contributes": {
   "configuration": {
     "properties": {
-      "i18nSearch.catalogPath": {
+      "i18nSearch.translationFilepath": {
         "type": "string",
         "default": "./src/i18n/en.ts",
         "description": "Path to the default-exported translation file"
@@ -146,7 +146,7 @@ workspace.onDidOpenTextDocument(async doc => {
 
 ## 🧪 Testing Checklist
 
-1. Set `"i18nSearch.catalogPath"` in the extension’s settings.
+1. Set `"i18nSearch.translationFilepath"` in the extension’s settings.
 2. Run the extension via F5 (Extension Dev Host).
 3. In your React app, search (⌘⇧F) for a string like `"Hello World"`.
 4. See `t("some.nested.key")` show up as a result (under scheme `i18n:`).

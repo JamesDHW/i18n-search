@@ -551,152 +551,8 @@ function parseObjectLiteral(objectString: string): any {
 		);
 	}
 
-	// Strategy 3: Enhanced regex-based parsing for complex cases
-	try {
-		// Handle template literals, multiline strings, and complex expressions
-		let processedString = objectString
-			// Handle template literals by converting to regular strings
-			.replace(/`([^`]*)`/g, '"$1"')
-			// Handle multiline strings with proper escaping
-			.replace(/'([^']*(?:\\'[^']*)*)'/g, (match, content) => {
-				return `"${content.replace(/\\'/g, "'").replace(/"/g, '\\"')}"`;
-			})
-			// Handle double-quoted strings with proper escaping
-			.replace(/"([^"]*(?:\\"[^"]*)*)"/g, (match, content) => {
-				return `"${content.replace(/\\"/g, '"')}"`;
-			})
-			// Quote unquoted property names (more comprehensive)
-			.replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":')
-			// Remove trailing commas more thoroughly
-			.replace(/,(\s*[}\]])/g, "$1")
-			.replace(/,\s*}/g, "}")
-			.replace(/,\s*]/g, "]")
-			// Handle comments (remove them)
-			.replace(/\/\*[\s\S]*?\*\//g, "") // Remove /* */ comments
-			.replace(/\/\/.*$/gm, "") // Remove // comments
-			// Handle undefined values
-			.replace(/\bundefined\b/g, "null")
-			// Handle boolean values
-			.replace(/\btrue\b/g, "true")
-			.replace(/\bfalse\b/g, "false");
-
-		return JSON.parse(processedString);
-	} catch (error) {
-		getLogger().debug(
-			"Enhanced parsing failed, trying simple AST-based approach...",
-		);
-	}
-
-	// Strategy 4: Simple AST-like parsing for basic object structures
-	try {
-		// This is a simplified parser that handles basic nested objects
-		// It's safer than eval/Function but less comprehensive
-		const result: any = {};
-		let currentKey = "";
-		let currentValue = "";
-		let depth = 0;
-		let inString = false;
-		let stringChar = "";
-		let i = 0;
-
-		while (i < objectString.length) {
-			const char = objectString[i];
-
-			if (!inString && (char === '"' || char === "'" || char === "`")) {
-				inString = true;
-				stringChar = char;
-				i++;
-				continue;
-			}
-
-			if (inString && char === stringChar) {
-				inString = false;
-				stringChar = "";
-				i++;
-				continue;
-			}
-
-			if (inString) {
-				if (depth === 1) {
-					currentValue += char;
-				}
-				i++;
-				continue;
-			}
-
-			if (char === "{") {
-				depth++;
-				if (depth === 1) {
-					// Start of main object
-				} else if (depth === 2 && currentKey) {
-					// Nested object - for simplicity, we'll treat it as a string
-					currentValue = "{";
-				}
-			} else if (char === "}") {
-				depth--;
-				if (depth === 1 && currentKey) {
-					// End of nested object
-					currentValue += "}";
-				} else if (depth === 0) {
-					// End of main object
-					break;
-				}
-			} else if (char === ":" && depth === 1) {
-				// Key-value separator
-				currentKey = currentKey.trim();
-				i++;
-				continue;
-			} else if (char === "," && depth === 1) {
-				// End of key-value pair
-				if (currentKey && currentValue) {
-					result[currentKey] = currentValue.trim();
-				}
-				currentKey = "";
-				currentValue = "";
-			} else if (depth === 1) {
-				if (currentKey === "") {
-					currentKey += char;
-				} else {
-					currentValue += char;
-				}
-			}
-
-			i++;
-		}
-
-		// Add the last key-value pair
-		if (currentKey && currentValue) {
-			result[currentKey.trim()] = currentValue.trim();
-		}
-
-		return result;
-	} catch (error) {
-		getLogger().debug("AST-based parsing failed");
-	}
-
-	// Strategy 5: Last resort - use a more controlled Function constructor
-	// This is still safer than eval because we're only executing the object literal
-	try {
-		// Sanitize the input to prevent code injection
-		const sanitized = objectString
-			.replace(/[^\w\s\{\}\[\]"':,\.\-]/g, "") // Remove potentially dangerous characters
-			.replace(
-				/\b(import|export|require|eval|Function|global|process|window|document)\b/g,
-				"",
-			); // Remove dangerous keywords
-
-		// Only allow object literal syntax
-		if (!/^[\s\{]*\{[\s\S]*\}[\s]*$/.test(sanitized)) {
-			throw new Error("Input is not a valid object literal");
-		}
-
-		return Function(`"use strict"; return ${sanitized}`)();
-	} catch (error) {
-		getLogger().error("All parsing strategies failed:", error);
-		throw new Error(
-			"Failed to parse translation object with all available methods",
-		);
-	}
+	getLogger().error("Failed to parse translation object");
+	return {};
 }
 
 async function loadTranslations(filePath: string): Promise<TranslationMap> {
@@ -804,10 +660,13 @@ export function activate(context: vscode.ExtensionContext) {
 
 	async function initializeExtension() {
 		const config = vscode.workspace.getConfiguration("i18nSearch");
-		const catalogPath = config.get<string>("catalogPath", "./src/i18n/en.ts");
+		const translationFilepath = config.get<string>(
+			"translationFilepath",
+			"./src/i18n/en.ts",
+		);
 
 		try {
-			translationMap = await loadTranslations(catalogPath);
+			translationMap = await loadTranslations(translationFilepath);
 
 			// Register file system provider
 			fileSystemProvider = new I18nFileSystemProvider(translationMap);
@@ -833,20 +692,26 @@ export function activate(context: vscode.ExtensionContext) {
 	// Watch for changes in the translation file
 	function setupFileWatcher() {
 		const config = vscode.workspace.getConfiguration("i18nSearch");
-		const catalogPath = config.get<string>("catalogPath", "./src/i18n/en.ts");
+		const translationFilepath = config.get<string>(
+			"translationFilepath",
+			"./src/i18n/en.ts",
+		);
 
 		const workspaceFolders = vscode.workspace.workspaceFolders;
 		if (!workspaceFolders || workspaceFolders.length === 0) {
 			return;
 		}
 
-		const absPath = path.resolve(workspaceFolders[0].uri.fsPath, catalogPath);
+		const absPath = path.resolve(
+			workspaceFolders[0].uri.fsPath,
+			translationFilepath,
+		);
 
 		const watcher = vscode.workspace.createFileSystemWatcher(absPath);
 
 		watcher.onDidChange(async () => {
 			getLogger().info("Translation file changed, reloading...");
-			translationMap = await loadTranslations(catalogPath);
+			translationMap = await loadTranslations(translationFilepath);
 
 			if (fileSystemProvider) {
 				fileSystemProvider.updateTranslations(translationMap);
