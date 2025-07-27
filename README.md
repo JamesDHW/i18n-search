@@ -8,8 +8,13 @@
 > [!NOTE]  
 > Find usages of i18n translation keys in the codebase just from the translated text.
 
+<p align="center">
+  <img src="public/demo.gif" width="1000" alt="demo gif" />
+</p>
+
 
 A VS Code extension that bridges the gap between translated text and translation keys. When you search for translated values like "Hello World", it automatically shows you the corresponding translation to find and navigate directly to usages like `t("common.hello")`.
+
 
 ## The Problem
 
