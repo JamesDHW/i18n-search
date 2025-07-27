@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
+import * as ts from "typescript";
 
 interface TranslationMap {
 	[key: string]: string[];
@@ -419,6 +420,262 @@ class I18nFileSystemProvider implements vscode.FileSystemProvider {
 	}
 }
 
+// Robust parser for TypeScript/JavaScript object literals
+function parseObjectLiteral(objectString: string): any {
+	// Strategy 1: Try JSON.parse with basic transformations
+	try {
+		const jsonString = objectString
+			.replace(/(\w+):/g, '"$1":') // Quote property names
+			.replace(/'/g, '"') // Replace single quotes with double quotes
+			.replace(/,(\s*[}\]])/g, "$1") // Remove trailing commas before } or ]
+			.replace(/,\s*}/g, "}") // Remove trailing commas before closing braces
+			.replace(/,\s*]/g, "]"); // Remove trailing commas before closing brackets
+
+		return JSON.parse(jsonString);
+	} catch (error) {
+		getLogger().debug("JSON.parse failed, trying enhanced parsing...");
+	}
+
+	// Strategy 2: TypeScript AST-based parsing (most robust)
+	try {
+		// Create a TypeScript source file
+		const sourceFile = ts.createSourceFile(
+			"translation.ts",
+			`const translations = ${objectString};`,
+			ts.ScriptTarget.Latest,
+			true,
+		);
+
+		// Find the variable declaration
+		const variableStatement = sourceFile.statements.find(
+			(stmt): stmt is ts.VariableStatement => ts.isVariableStatement(stmt),
+		);
+
+		if (!variableStatement) {
+			throw new Error("No variable statement found");
+		}
+
+		const variableDeclaration =
+			variableStatement.declarationList.declarations[0];
+		if (!variableDeclaration || !variableDeclaration.initializer) {
+			throw new Error("No variable initializer found");
+		}
+
+		// Extract the object literal
+		const objectLiteral = variableDeclaration.initializer;
+		if (!ts.isObjectLiteralExpression(objectLiteral)) {
+			throw new Error("Variable initializer is not an object literal");
+		}
+
+		// Convert the AST back to a JavaScript object
+		const result: any = {};
+
+		function processPropertyAssignment(prop: ts.ObjectLiteralElementLike): any {
+			if (ts.isPropertyAssignment(prop)) {
+				const key = prop.name.getText(sourceFile);
+				const value = processExpression(prop.initializer);
+				return { key, value };
+			}
+			return null;
+		}
+
+		function processExpression(expr: ts.Expression): any {
+			if (ts.isStringLiteral(expr)) {
+				return expr.text;
+			} else if (ts.isNumericLiteral(expr)) {
+				return Number(expr.text);
+			} else if (expr.kind === ts.SyntaxKind.TrueKeyword) {
+				return true;
+			} else if (expr.kind === ts.SyntaxKind.FalseKeyword) {
+				return false;
+			} else if (expr.kind === ts.SyntaxKind.NullKeyword) {
+				return null;
+			} else if (ts.isObjectLiteralExpression(expr)) {
+				const obj: any = {};
+				expr.properties.forEach((prop) => {
+					const assignment = processPropertyAssignment(prop);
+					if (assignment) {
+						obj[assignment.key] = assignment.value;
+					}
+				});
+				return obj;
+			} else if (ts.isArrayLiteralExpression(expr)) {
+				return expr.elements.map((element) => processExpression(element));
+			} else if (ts.isTemplateExpression(expr)) {
+				// Convert template literals to regular strings
+				let result = "";
+				result += expr.head.text;
+				expr.templateSpans.forEach((span) => {
+					result += span.literal.text;
+				});
+				return result;
+			}
+			// For other expressions, return as string
+			return expr.getText(sourceFile);
+		}
+
+		objectLiteral.properties.forEach((prop) => {
+			const assignment = processPropertyAssignment(prop);
+			if (assignment) {
+				result[assignment.key] = assignment.value;
+			}
+		});
+
+		return result;
+	} catch (error) {
+		getLogger().debug(
+			"TypeScript AST parsing failed, trying enhanced regex...",
+		);
+	}
+
+	// Strategy 3: Enhanced regex-based parsing for complex cases
+	try {
+		// Handle template literals, multiline strings, and complex expressions
+		let processedString = objectString
+			// Handle template literals by converting to regular strings
+			.replace(/`([^`]*)`/g, '"$1"')
+			// Handle multiline strings with proper escaping
+			.replace(/'([^']*(?:\\'[^']*)*)'/g, (match, content) => {
+				return `"${content.replace(/\\'/g, "'").replace(/"/g, '\\"')}"`;
+			})
+			// Handle double-quoted strings with proper escaping
+			.replace(/"([^"]*(?:\\"[^"]*)*)"/g, (match, content) => {
+				return `"${content.replace(/\\"/g, '"')}"`;
+			})
+			// Quote unquoted property names (more comprehensive)
+			.replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":')
+			// Remove trailing commas more thoroughly
+			.replace(/,(\s*[}\]])/g, "$1")
+			.replace(/,\s*}/g, "}")
+			.replace(/,\s*]/g, "]")
+			// Handle comments (remove them)
+			.replace(/\/\*[\s\S]*?\*\//g, "") // Remove /* */ comments
+			.replace(/\/\/.*$/gm, "") // Remove // comments
+			// Handle undefined values
+			.replace(/\bundefined\b/g, "null")
+			// Handle boolean values
+			.replace(/\btrue\b/g, "true")
+			.replace(/\bfalse\b/g, "false");
+
+		return JSON.parse(processedString);
+	} catch (error) {
+		getLogger().debug(
+			"Enhanced parsing failed, trying simple AST-based approach...",
+		);
+	}
+
+	// Strategy 4: Simple AST-like parsing for basic object structures
+	try {
+		// This is a simplified parser that handles basic nested objects
+		// It's safer than eval/Function but less comprehensive
+		const result: any = {};
+		let currentKey = "";
+		let currentValue = "";
+		let depth = 0;
+		let inString = false;
+		let stringChar = "";
+		let i = 0;
+
+		while (i < objectString.length) {
+			const char = objectString[i];
+
+			if (!inString && (char === '"' || char === "'" || char === "`")) {
+				inString = true;
+				stringChar = char;
+				i++;
+				continue;
+			}
+
+			if (inString && char === stringChar) {
+				inString = false;
+				stringChar = "";
+				i++;
+				continue;
+			}
+
+			if (inString) {
+				if (depth === 1) {
+					currentValue += char;
+				}
+				i++;
+				continue;
+			}
+
+			if (char === "{") {
+				depth++;
+				if (depth === 1) {
+					// Start of main object
+				} else if (depth === 2 && currentKey) {
+					// Nested object - for simplicity, we'll treat it as a string
+					currentValue = "{";
+				}
+			} else if (char === "}") {
+				depth--;
+				if (depth === 1 && currentKey) {
+					// End of nested object
+					currentValue += "}";
+				} else if (depth === 0) {
+					// End of main object
+					break;
+				}
+			} else if (char === ":" && depth === 1) {
+				// Key-value separator
+				currentKey = currentKey.trim();
+				i++;
+				continue;
+			} else if (char === "," && depth === 1) {
+				// End of key-value pair
+				if (currentKey && currentValue) {
+					result[currentKey] = currentValue.trim();
+				}
+				currentKey = "";
+				currentValue = "";
+			} else if (depth === 1) {
+				if (currentKey === "") {
+					currentKey += char;
+				} else {
+					currentValue += char;
+				}
+			}
+
+			i++;
+		}
+
+		// Add the last key-value pair
+		if (currentKey && currentValue) {
+			result[currentKey.trim()] = currentValue.trim();
+		}
+
+		return result;
+	} catch (error) {
+		getLogger().debug("AST-based parsing failed");
+	}
+
+	// Strategy 5: Last resort - use a more controlled Function constructor
+	// This is still safer than eval because we're only executing the object literal
+	try {
+		// Sanitize the input to prevent code injection
+		const sanitized = objectString
+			.replace(/[^\w\s\{\}\[\]"':,\.\-]/g, "") // Remove potentially dangerous characters
+			.replace(
+				/\b(import|export|require|eval|Function|global|process|window|document)\b/g,
+				"",
+			); // Remove dangerous keywords
+
+		// Only allow object literal syntax
+		if (!/^[\s\{]*\{[\s\S]*\}[\s]*$/.test(sanitized)) {
+			throw new Error("Input is not a valid object literal");
+		}
+
+		return Function(`"use strict"; return ${sanitized}`)();
+	} catch (error) {
+		getLogger().error("All parsing strategies failed:", error);
+		throw new Error(
+			"Failed to parse translation object with all available methods",
+		);
+	}
+}
+
 async function loadTranslations(filePath: string): Promise<TranslationMap> {
 	try {
 		const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -441,29 +698,8 @@ async function loadTranslations(filePath: string): Promise<TranslationMap> {
 			throw new Error("Translation file must export a default object");
 		}
 
-		// Parse the object safely by converting to valid JSON
 		const objectString = match[1];
-		const jsonString = objectString
-			.replace(/(\w+):/g, '"$1":') // Quote property names
-			.replace(/'/g, '"') // Replace single quotes with double quotes
-			.replace(/,(\s*[}\]])/g, "$1") // Remove trailing commas before } or ]
-			.replace(/,\s*}/g, "}") // Remove trailing commas before closing braces
-			.replace(/,\s*]/g, "]"); // Remove trailing commas before closing brackets
-
-		let translationObj: any;
-		try {
-			translationObj = JSON.parse(jsonString);
-		} catch (parseError) {
-			getLogger().error("JSON parse error:", parseError);
-			getLogger().error("Attempted to parse:", jsonString);
-			// Fallback: try to use Function constructor (safer than eval)
-			try {
-				translationObj = Function(`return ${objectString}`)();
-			} catch (fallbackError) {
-				getLogger().error("Fallback parse also failed:", fallbackError);
-				throw new Error("Failed to parse translation object");
-			}
-		}
+		const translationObj = parseObjectLiteral(objectString);
 
 		if (!translationObj || typeof translationObj !== "object") {
 			throw new Error("Translation file must export a default object");
