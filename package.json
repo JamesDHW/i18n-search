@@ -145,8 +145,8 @@
     "keybindings": [
       {
         "command": "i18n-search.focusSearch",
-        "key": "alt+shift+f",
-        "mac": "alt+shift+f",
+        "key": "ctrl+shift+f",
+        "mac": "ctrl+shift+f",
         "when": "editorTextFocus"
       }
     ]
