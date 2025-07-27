@@ -16,7 +16,7 @@
   },
   "icon": "public/i18n-search.png",
   "activationEvents": [
-    "*"
+    "onUri"
   ],
   "main": "./dist/extension.js",
   "contributes": {
