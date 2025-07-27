@@ -169,13 +169,6 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 		}
 	}
 
-	private clearSearchState() {
-		this.lastSearchTerm = "";
-		this.lastSearchResults = [];
-		this.context.globalState.update("i18nSearch.lastSearchTerm", "");
-		this.context.globalState.update("i18nSearch.lastSearchResults", []);
-	}
-
 	resolveWebviewView(view: vscode.WebviewView) {
 		getLogger().debug("WebviewView resolved!");
 		getLogger().debug("View type:", view.viewType);
@@ -220,11 +213,14 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 
 				// Save search state (including empty searches)
 				this.saveSearchState(msg.text, matches);
-			} else if (msg.type === "reveal") {
+			}
+			if (msg.type === "reveal") {
 				this.revealKeyUsage(msg.key, msg.value);
-			} else if (msg.type === "searchCodebase") {
+			}
+			if (msg.type === "searchCodebase") {
 				this.searchCodebase(msg.searchText);
-			} else if (msg.type === "webviewReady") {
+			}
+			if (msg.type === "webviewReady") {
 				this.webviewReady = true;
 				getLogger().debug("Webview is ready for interaction");
 
@@ -233,8 +229,21 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 					this.focusSearch();
 				}
 
-				// Restore last search if available
-				this.restoreLastSearch();
+				// Restore last search if available, otherwise show all translations
+				if (this.lastSearchTerm) {
+					this.restoreLastSearch();
+				} else {
+					// Show all translations by default
+					const allMatches = this.findTranslations("");
+					view.webview.postMessage({
+						type: "results",
+						results: allMatches,
+						searchText: "",
+						enableMixedSearch: vscode.workspace
+							.getConfiguration("i18nSearch")
+							.get<boolean>("enableMixedSearch", true),
+					});
+				}
 			}
 		});
 
@@ -249,8 +258,9 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 	): { key: string; label: string; value: string }[] {
 		const results: { key: string; label: string; value: string }[] = [];
 
-		for (const [value, keys] of Object.entries(this.translationMap)) {
-			if (value.toLowerCase().includes(searchText.toLowerCase())) {
+		// If search text is empty, return all translations
+		if (!searchText.trim()) {
+			for (const [value, keys] of Object.entries(this.translationMap)) {
 				keys.forEach((key) => {
 					results.push({
 						key,
@@ -258,6 +268,19 @@ class I18nSearchViewProvider implements vscode.WebviewViewProvider {
 						value,
 					});
 				});
+			}
+		} else {
+			// Filter by search text
+			for (const [value, keys] of Object.entries(this.translationMap)) {
+				if (value.toLowerCase().includes(searchText.toLowerCase())) {
+					keys.forEach((key) => {
+						results.push({
+							key,
+							label: `t("${key}") → ${value}`,
+							value,
+						});
+					});
+				}
 			}
 		}
 
