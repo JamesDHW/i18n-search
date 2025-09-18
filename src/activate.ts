@@ -571,14 +571,26 @@ async function loadTranslations(filePath: string): Promise<TranslationMap> {
 		// Read the translation file
 		const fileContent = fs.readFileSync(absPath, "utf-8");
 
-		// Extract the object from the export default statement
-		const match = fileContent.match(/export\s+default\s+(\{[\s\S]*\})/);
-		if (!match) {
-			throw new Error("Translation file must export a default object");
+		// Parse translation object (supports .json or TS default-export literal)
+		let translationObj: any;
+
+		if (filePath.toLowerCase().endsWith(".json")) {
+			try {
+				translationObj = JSON.parse(fileContent);
+			} catch {
+				logger.debug("Failed to parse JSON translation file");
+			}
 		}
 
-		const objectString = match[1];
-		const translationObj = parseObjectLiteral(objectString);
+		if (!translationObj) {
+			const match = fileContent.match(/export\s+default\s+(\{[\s\S]*\})/);
+			if (!match) {
+				logger.debug("Translation file must export a default object");
+			} else {
+				const objectString = match[1];
+				translationObj = parseObjectLiteral(objectString);
+			}
+		}
 
 		if (!translationObj || typeof translationObj !== "object") {
 			throw new Error("Translation file must export a default object");
